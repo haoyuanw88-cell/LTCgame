@@ -1,0 +1,71 @@
+using System;
+using UnityEngine;
+using UnityEngine.UI;
+
+[ExecuteAlways]
+[RequireComponent(typeof(CanvasRenderer))]
+public class CognitiveTrendChartGraphic : MaskableGraphic
+{
+    [SerializeField] private Color gridColor = new Color(0.35f, 0.43f, 0.37f, 0.42f);
+    [SerializeField] private Color lineColor = new Color(0.29f, 0.63f, 0.49f, 1f);
+    [SerializeField] private float gridThickness = 1.5f;
+    [SerializeField] private float lineThickness = 4f;
+    [SerializeField] private float[] values = new float[30];
+
+    public void SetValues(float[] newValues, Color newLineColor)
+    {
+        values = new float[30];
+        if (newValues != null)
+            Array.Copy(newValues, values, Mathf.Min(values.Length, newValues.Length));
+        lineColor = newLineColor;
+        SetVerticesDirty();
+    }
+
+    protected override void OnPopulateMesh(VertexHelper vh)
+    {
+        vh.Clear();
+        Rect r = rectTransform.rect;
+        float left = r.xMin + 8f;
+        float right = r.xMax - 8f;
+        float bottom = r.yMin + 8f;
+        float top = r.yMax - 8f;
+
+        for (int i = 0; i <= 4; i++)
+        {
+            float y = Mathf.Lerp(bottom, top, i / 4f);
+            AddLine(vh, new Vector2(left, y), new Vector2(right, y), gridThickness, gridColor);
+        }
+
+        for (int i = 0; i <= 6; i++)
+        {
+            float x = Mathf.Lerp(left, right, i / 6f);
+            AddLine(vh, new Vector2(x, bottom), new Vector2(x, top), gridThickness, gridColor);
+        }
+
+        AddLine(vh, new Vector2(left, bottom), new Vector2(right, bottom), 3f,
+            new Color(lineColor.r, lineColor.g, lineColor.b, 0.75f));
+
+        if (values == null || values.Length < 2) return;
+        for (int i = 0; i < values.Length - 1; i++)
+        {
+            Vector2 a = new Vector2(Mathf.Lerp(left, right, i / 29f),
+                Mathf.Lerp(bottom, top, Mathf.Clamp01(values[i] / 100f)));
+            Vector2 b = new Vector2(Mathf.Lerp(left, right, (i + 1) / 29f),
+                Mathf.Lerp(bottom, top, Mathf.Clamp01(values[i + 1] / 100f)));
+            AddLine(vh, a, b, lineThickness, lineColor);
+        }
+    }
+
+    private static void AddLine(VertexHelper vh, Vector2 a, Vector2 b, float thickness, Color color)
+    {
+        Vector2 direction = (b - a).normalized;
+        Vector2 normal = new Vector2(-direction.y, direction.x) * thickness * 0.5f;
+        int start = vh.currentVertCount;
+        vh.AddVert(a - normal, color, Vector2.zero);
+        vh.AddVert(a + normal, color, Vector2.zero);
+        vh.AddVert(b + normal, color, Vector2.zero);
+        vh.AddVert(b - normal, color, Vector2.zero);
+        vh.AddTriangle(start, start + 1, start + 2);
+        vh.AddTriangle(start, start + 2, start + 3);
+    }
+}

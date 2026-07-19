@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using LTCCognitiveAssessment;
 
 public class ColorMatchStroopGameManager : MonoBehaviour
 {
@@ -13,30 +14,30 @@ public class ColorMatchStroopGameManager : MonoBehaviour
         public Color colorValue;
     }
 
-    [Header("ÃD¥Ø UI")]
+    [Header("é¡Œç›® UI")]
     public TMP_Text topWordText;
     public TMP_Text bottomWordText;
 
-    [Header("µª®×«ö¶s")]
+    [Header("ç­”æ¡ˆæŒ‰éˆ•")]
     public Button correctButton;
     public Button wrongButton;
 
-    [Header("ª¬ºA UI")]
+    [Header("ç‹€æ…‹ UI")]
     public TMP_Text scoreText;
     public TMP_Text timerText;
     public GameObject resultPanel;
     public TMP_Text resultText;
 
-    [Header("¹CÀ¸³]©w")]
+    [Header("éŠæˆ²è¨­å®š")]
     public float gameTime = 60f;
     public int scorePerCorrect = 10;
     public int wrongPenalty = 5;
 
-    [Header("ª÷¹ô¼úÀy")]
+    [Header("é‡‘å¹£çå‹µ")]
     public int coinPerCorrect = 1;
     public int coinPerScoreUnit = 20;
 
-    [Header("ÃC¦â¸ê®Æ")]
+    [Header("é¡è‰²è³‡æ–™")]
     public List<ColorWord> colorWords = new List<ColorWord>();
 
     private ColorWord topMeaning;
@@ -60,6 +61,8 @@ public class ColorMatchStroopGameManager : MonoBehaviour
     private readonly List<float> mismatchReactionTimes = new List<float>();
 
     private bool isGameRunning = false;
+    private string assessmentSessionId;
+    private int randomSeed;
 
     void Start()
     {
@@ -69,6 +72,9 @@ public class ColorMatchStroopGameManager : MonoBehaviour
 
     public void StartGame()
     {
+        randomSeed = Random.Range(int.MinValue, int.MaxValue);
+        Random.InitState(randomSeed);
+        assessmentSessionId = CognitiveAssessmentService.BeginGame("stroop_color_match", "1.0.0");
         score = 0;
         correctCount = 0;
         wrongCount = 0;
@@ -111,11 +117,11 @@ public class ColorMatchStroopGameManager : MonoBehaviour
 
         colorWords = new List<ColorWord>
         {
-            new ColorWord { colorName = "¬õ", displayWord = "¬õ", colorValue = Color.red },
-            new ColorWord { colorName = "¶À", displayWord = "¶À", colorValue = Color.yellow },
-            new ColorWord { colorName = "ºñ", displayWord = "ºñ", colorValue = Color.green },
-            new ColorWord { colorName = "ÂÅ", displayWord = "ÂÅ", colorValue = Color.blue },
-            new ColorWord { colorName = "¶Â", displayWord = "¶Â", colorValue = Color.black }
+            new ColorWord { colorName = "ç´…", displayWord = "ç´…", colorValue = Color.red },
+            new ColorWord { colorName = "é»ƒ", displayWord = "é»ƒ", colorValue = Color.yellow },
+            new ColorWord { colorName = "ç¶ ", displayWord = "ç¶ ", colorValue = Color.green },
+            new ColorWord { colorName = "è—", displayWord = "è—", colorValue = Color.blue },
+            new ColorWord { colorName = "é»‘", displayWord = "é»‘", colorValue = Color.black }
         };
     }
 
@@ -197,6 +203,7 @@ public class ColorMatchStroopGameManager : MonoBehaviour
         if (!isGameRunning) return;
 
         float reactionTime = Time.time - questionStartTime;
+        bool isAnswerCorrect = playerChoseCorrect == currentAnswerIsCorrect;
 
         if (currentAnswerIsCorrect)
         {
@@ -207,7 +214,22 @@ public class ColorMatchStroopGameManager : MonoBehaviour
             mismatchReactionTimes.Add(reactionTime);
         }
 
-        if (playerChoseCorrect == currentAnswerIsCorrect)
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = questionCount,
+            randomSeed = randomSeed,
+            difficulty = 1,
+            condition = currentAnswerIsCorrect ? "congruent" : "incongruent",
+            stimulus = topMeaning.colorName + "|" + topInkColor.colorName + "|" +
+                       bottomMeaning.colorName + "|" + bottomInkColor.colorName,
+            expectedAnswer = currentAnswerIsCorrect ? "match" : "mismatch",
+            userAnswer = playerChoseCorrect ? "match" : "mismatch",
+            outcome = isAnswerCorrect ? TrialOutcome.Correct : TrialOutcome.Incorrect,
+            reactionTimeMs = Mathf.RoundToInt(reactionTime * 1000f),
+            errorType = isAnswerCorrect ? "" : "classification_error"
+        });
+
+        if (isAnswerCorrect)
         {
             score += scorePerCorrect;
             correctCount++;
@@ -231,12 +253,12 @@ public class ColorMatchStroopGameManager : MonoBehaviour
     {
         if (scoreText != null)
         {
-            scoreText.text = "¤À¼Æ¡G" + score;
+            scoreText.text = "åˆ†æ•¸ï¼š" + score;
         }
 
         if (timerText != null)
         {
-            timerText.text = "®É¶¡¡G" + Mathf.CeilToInt(timeLeft);
+            timerText.text = "æ™‚é–“ï¼š" + Mathf.CeilToInt(timeLeft);
         }
     }
 
@@ -250,6 +272,11 @@ public class ColorMatchStroopGameManager : MonoBehaviour
         float matchAvg = Average(matchReactionTimes);
         float mismatchAvg = Average(mismatchReactionTimes);
         float interference = mismatchAvg - matchAvg;
+        CognitiveGameResult cognitiveResult = CognitiveAssessmentService.CompleteGame(
+            assessmentSessionId,
+            CognitiveDomain.AttentionInhibitoryControl,
+            interference * 1000f,
+            1f);
 
         if (resultPanel != null)
         {
@@ -259,14 +286,16 @@ public class ColorMatchStroopGameManager : MonoBehaviour
         if (resultText != null)
         {
             resultText.text =
-                "¹CÀ¸µ²§ô\n" +
-                "¤À¼Æ¡G" + score + "\n" +
-                "Àò±oª÷¹ô¡G+" + earnedCoins + "\n" +
-                "¥¿½T¡G" + correctCount + "\n" +
-                "¿ù»~¡G" + wrongCount + "\n" +
-                "¬Û¦P¥­§¡¤ÏÀ³¡G" + matchAvg.ToString("F2") + " ¬í\n" +
-                "¤£¦P¥­§¡¤ÏÀ³¡G" + mismatchAvg.ToString("F2") + " ¬í\n" +
-                "§PÂ_¤zÂZ­È¡G" + interference.ToString("F2") + " ¬í";
+                "éŠæˆ²çµæŸ\n" +
+                "åˆ†æ•¸ï¼š" + score + "\n" +
+                "ç²å¾—é‡‘å¹£ï¼š+" + earnedCoins + "\n" +
+                "æ­£ç¢ºï¼š" + correctCount + "\n" +
+                "éŒ¯èª¤ï¼š" + wrongCount + "\n" +
+                "ç›¸åŒå¹³å‡åæ‡‰ï¼š" + matchAvg.ToString("F2") + " ç§’\n" +
+                "ä¸åŒå¹³å‡åæ‡‰ï¼š" + mismatchAvg.ToString("F2") + " ç§’\n" +
+                "åˆ¤æ–·å¹²æ“¾å€¼ï¼š" + interference.ToString("F2") + " ç§’\n" +
+                "æ³¨æ„åŠ›èˆ‡æŠ‘åˆ¶æ§åˆ¶ï¼š" + cognitiveResult.performanceScore.ToString("F0") + "/100\n" +
+                cognitiveResult.dataQualityNote;
         }
     }
 

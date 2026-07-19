@@ -2,13 +2,14 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using LTCCognitiveAssessment;
 
 public class NumberSumGameManager : MonoBehaviour
 {
-    [Header("¹w¥ı±Æ¦nªº¼Æ¦r«ö¶s")]
+    [Header("é å…ˆæ’å¥½çš„æ•¸å­—æŒ‰éˆ•")]
     public List<Button> numberButtons = new List<Button>();
 
-    [Header("«ö¶s¹Ï¤ù")]
+    [Header("æŒ‰éˆ•åœ–ç‰‡")]
     public List<Sprite> normalButtonSprites = new List<Sprite>();
     public Sprite selectedButtonSprite;
 
@@ -24,7 +25,7 @@ public class NumberSumGameManager : MonoBehaviour
     public int scorePerRound = 20;
     public int wrongPenalty = 5;
 
-    [Header("ª÷¹ô¼úÀy")]
+    [Header("é‡‘å¹£çå‹µ")]
     public int coinPerCompletedRound = 3;
     public int coinPerScoreUnit = 10;
 
@@ -49,6 +50,10 @@ public class NumberSumGameManager : MonoBehaviour
     private readonly HashSet<Button> selectedButtons = new HashSet<Button>();
 
     private bool isGameRunning = false;
+    private string assessmentSessionId;
+    private int randomSeed;
+    private float trialStartTime;
+    private int trialIndex;
 
     void Start()
     {
@@ -73,6 +78,10 @@ public class NumberSumGameManager : MonoBehaviour
 
     public void StartGame()
     {
+        randomSeed = Random.Range(int.MinValue, int.MaxValue);
+        Random.InitState(randomSeed);
+        assessmentSessionId = CognitiveAssessmentService.BeginGame("number_sum", "1.0.0");
+        trialIndex = 0;
         score = 0;
         round = 1;
         completedRoundCount = 0;
@@ -88,6 +97,7 @@ public class NumberSumGameManager : MonoBehaviour
 
         SpawnRound();
         UpdateUI();
+        trialStartTime = Time.time;
     }
 
     void SpawnRound()
@@ -223,6 +233,7 @@ public class NumberSumGameManager : MonoBehaviour
         if (!buttonNumbers.ContainsKey(button)) return;
 
         int number = buttonNumbers[button];
+        int sumBeforeInput = currentSum;
 
         if (selectedButtons.Contains(button))
         {
@@ -239,10 +250,12 @@ public class NumberSumGameManager : MonoBehaviour
 
         if (currentSum == targetNumber)
         {
+            RecordSelectionTrial(number, sumBeforeInput, true, "");
             CompleteRound();
         }
         else if (currentSum > targetNumber)
         {
+            RecordSelectionTrial(number, sumBeforeInput, false, "sum_exceeded_target");
             wrongClickCount++;
             score -= wrongPenalty;
 
@@ -252,6 +265,10 @@ public class NumberSumGameManager : MonoBehaviour
             }
 
             ResetSelection();
+        }
+        else
+        {
+            RecordSelectionTrial(number, sumBeforeInput, true, "partial_progress");
         }
 
         UpdateUI();
@@ -295,6 +312,26 @@ public class NumberSumGameManager : MonoBehaviour
         SpawnRound();
     }
 
+    void RecordSelectionTrial(int selectedNumber, int sumBeforeInput, bool validAction, string errorType)
+    {
+        trialIndex++;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = trialIndex,
+            randomSeed = randomSeed,
+            difficulty = activeButtons.Count,
+            condition = "target_sum",
+            stimulus = string.Join(",", buttonNumbers.Values) + "|target=" + targetNumber +
+                       "|sumBefore=" + sumBeforeInput,
+            expectedAnswer = targetNumber.ToString(),
+            userAnswer = selectedNumber.ToString(),
+            outcome = validAction ? TrialOutcome.Correct : TrialOutcome.Incorrect,
+            reactionTimeMs = Mathf.RoundToInt((Time.time - trialStartTime) * 1000f),
+            errorType = errorType
+        });
+        trialStartTime = Time.time;
+    }
+
     void HideAllButtons()
     {
         for (int i = 0; i < numberButtons.Count; i++)
@@ -310,17 +347,17 @@ public class NumberSumGameManager : MonoBehaviour
     {
         if (scoreText != null)
         {
-            scoreText.text = "¤À¼Æ¡G" + score;
+            scoreText.text = "åˆ†æ•¸ï¼š" + score;
         }
 
         if (timerText != null)
         {
-            timerText.text = "®É¶¡¡G" + Mathf.CeilToInt(timeLeft);
+            timerText.text = "æ™‚é–“ï¼š" + Mathf.CeilToInt(timeLeft);
         }
 
         if (targetText != null)
         {
-            targetText.text = "¥Ø¼Ğ¡G" + targetNumber;
+            targetText.text = "ç›®æ¨™ï¼š" + targetNumber;
         }
     }
 
@@ -331,6 +368,11 @@ public class NumberSumGameManager : MonoBehaviour
 
         earnedCoins = completedRoundCount * coinPerCompletedRound + score / coinPerScoreUnit;
         CoinData.AddCoins(earnedCoins);
+        CognitiveGameResult cognitiveResult = CognitiveAssessmentService.CompleteGame(
+            assessmentSessionId,
+            CognitiveDomain.ExecutiveFunctionNumericalReasoning,
+            0f,
+            maxButtonCount);
 
         if (resultPanel != null)
         {
@@ -340,11 +382,13 @@ public class NumberSumGameManager : MonoBehaviour
         if (resultText != null)
         {
             resultText.text =
-                "¹CÀ¸µ²§ô\n" +
-                "¤À¼Æ¡G" + score + "\n" +
-                "Àò±oª÷¹ô¡G+" + earnedCoins + "\n" +
-                "§¹¦¨Ãö¥d¡G" + completedRoundCount + "\n" +
-                "¿ù»~¦¸¼Æ¡G" + wrongClickCount;
+                "éŠæˆ²çµæŸ\n" +
+                "åˆ†æ•¸ï¼š" + score + "\n" +
+                "ç²å¾—é‡‘å¹£ï¼š+" + earnedCoins + "\n" +
+                "å®Œæˆé—œå¡ï¼š" + completedRoundCount + "\n" +
+                "éŒ¯èª¤æ¬¡æ•¸ï¼š" + wrongClickCount + "\n" +
+                "åŸ·è¡ŒåŠŸèƒ½èˆ‡æ•¸å­—æ“ä½œï¼š" + cognitiveResult.performanceScore.ToString("F0") + "/100\n" +
+                cognitiveResult.dataQualityNote;
         }
     }
 }

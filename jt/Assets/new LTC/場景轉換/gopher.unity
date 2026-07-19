@@ -2958,6 +2958,22 @@ PrefabInstance:
       propertyPath: m_AdditionalShaderChannelsFlag
       value: 25
       objectReference: {fileID: 0}
+    - target: {fileID: 8571076842338426123, guid: 140d1d2c406167c50819d89f86d9092e, type: 3}
+      propertyPath: m_ScreenMatchMode
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8571076842338426123, guid: 140d1d2c406167c50819d89f86d9092e, type: 3}
+      propertyPath: m_MatchWidthOrHeight
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8571076842338426123, guid: 140d1d2c406167c50819d89f86d9092e, type: 3}
+      propertyPath: m_ReferenceResolution.x
+      value: 1366
+      objectReference: {fileID: 0}
+    - target: {fileID: 8571076842338426123, guid: 140d1d2c406167c50819d89f86d9092e, type: 3}
+      propertyPath: m_ReferenceResolution.y
+      value: 768
+      objectReference: {fileID: 0}
     - target: {fileID: 8571076842338426133, guid: 140d1d2c406167c50819d89f86d9092e, type: 3}
       propertyPath: m_Pivot.x
       value: 0

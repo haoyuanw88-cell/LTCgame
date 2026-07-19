@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using LTCCognitiveAssessment;
 
 public class NumberOrderPoolGameManager : MonoBehaviour
 {
-    [Header("¹w¥ı±Æ¦nªº¼Æ¦r«ö¶s")]
+    [Header("é å…ˆæ’å¥½çš„æ•¸å­—æŒ‰éˆ•")]
     public List<Button> numberButtons = new List<Button>();
 
-    [Header("«ö¶sÀH¾÷¹Ï¤ù")]
+    [Header("æŒ‰éˆ•éš¨æ©Ÿåœ–ç‰‡")]
     public List<Sprite> buttonSprites = new List<Sprite>();
 
     [Header("UI")]
@@ -18,7 +19,7 @@ public class NumberOrderPoolGameManager : MonoBehaviour
     public GameObject resultPanel;
     public TMP_Text resultText;
 
-    [Header("¿ù»~´£¥Ü")]
+    [Header("éŒ¯èª¤æç¤º")]
     public GameObject wrongImage;
     public float wrongImageShowTime = 0.5f;
 
@@ -27,7 +28,7 @@ public class NumberOrderPoolGameManager : MonoBehaviour
     public int scorePerCorrect = 10;
     public int wrongPenalty = 5;
 
-    [Header("ª÷¹ô¼úÀy")]
+    [Header("é‡‘å¹£çå‹µ")]
     public int coinPerCorrectClick = 1;
     public int coinPerCompletedRound = 2;
 
@@ -53,6 +54,10 @@ public class NumberOrderPoolGameManager : MonoBehaviour
 
     private bool isGameRunning = false;
     private bool isShowingWrong = false;
+    private string assessmentSessionId;
+    private int randomSeed;
+    private float trialStartTime;
+    private int trialIndex;
 
     void Start()
     {
@@ -82,6 +87,10 @@ public class NumberOrderPoolGameManager : MonoBehaviour
 
     public void StartGame()
     {
+        randomSeed = Random.Range(int.MinValue, int.MaxValue);
+        Random.InitState(randomSeed);
+        assessmentSessionId = CognitiveAssessmentService.BeginGame("number_order", "1.0.0");
+        trialIndex = 0;
         score = 0;
         round = 1;
         correctClickCount = 0;
@@ -136,6 +145,7 @@ public class NumberOrderPoolGameManager : MonoBehaviour
 
         sortedNumbers.AddRange(currentNumbers);
         sortedNumbers.Sort();
+        trialStartTime = Time.time;
     }
 
     int GenerateUniqueNumber()
@@ -198,8 +208,24 @@ public class NumberOrderPoolGameManager : MonoBehaviour
         if (currentTargetIndex >= sortedNumbers.Count) return;
 
         int targetNumber = sortedNumbers[currentTargetIndex];
+        bool isCorrect = number == targetNumber;
+        trialIndex++;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = trialIndex,
+            randomSeed = randomSeed,
+            difficulty = activeRoundButtons.Count,
+            condition = round >= negativeStartRound ? "positive_and_negative" : "positive_only",
+            stimulus = string.Join(",", currentNumbers),
+            expectedAnswer = targetNumber.ToString(),
+            userAnswer = number.ToString(),
+            outcome = isCorrect ? TrialOutcome.Correct : TrialOutcome.Incorrect,
+            reactionTimeMs = Mathf.RoundToInt((Time.time - trialStartTime) * 1000f),
+            errorType = isCorrect ? "" : "sequence_error"
+        });
+        trialStartTime = Time.time;
 
-        if (number == targetNumber)
+        if (isCorrect)
         {
             score += scorePerCorrect;
             correctClickCount++;
@@ -279,12 +305,12 @@ public class NumberOrderPoolGameManager : MonoBehaviour
     {
         if (scoreText != null)
         {
-            scoreText.text = "¤À¼Æ¡G" + score;
+            scoreText.text = "åˆ†æ•¸ï¼š" + score;
         }
 
         if (timerText != null)
         {
-            timerText.text = "®É¶¡¡G" + Mathf.CeilToInt(timeLeft);
+            timerText.text = "æ™‚é–“ï¼š" + Mathf.CeilToInt(timeLeft);
         }
     }
 
@@ -299,6 +325,11 @@ public class NumberOrderPoolGameManager : MonoBehaviour
         }
 
         int completedRounds = Mathf.Max(0, round - 1);
+        CognitiveGameResult cognitiveResult = CognitiveAssessmentService.CompleteGame(
+            assessmentSessionId,
+            CognitiveDomain.ProcessingSpeedVisualSearch,
+            0f,
+            Mathf.Min(startNumberCount + completedRounds, maxNumberCount));
         earnedCoins = correctClickCount * coinPerCorrectClick + completedRounds * coinPerCompletedRound;
 
         CoinData.AddCoins(earnedCoins);
@@ -311,12 +342,14 @@ public class NumberOrderPoolGameManager : MonoBehaviour
         if (resultText != null)
         {
             resultText.text =
-                "¹CÀ¸µ²§ô\n" +
-                "¤À¼Æ¡G" + score + "\n" +
-                "Àò±oª÷¹ô¡G+" + earnedCoins + "\n" +
-                "¥¿½TÂIÀ»¡G" + correctClickCount + "\n" +
-                "¿ù»~ÂIÀ»¡G" + wrongClickCount + "\n" +
-                "§¹¦¨Ãö¥d¡G" + completedRounds;
+                "éŠæˆ²çµæŸ\n" +
+                "åˆ†æ•¸ï¼š" + score + "\n" +
+                "ç²å¾—é‡‘å¹£ï¼š+" + earnedCoins + "\n" +
+                "æ­£ç¢ºé»æ“Šï¼š" + correctClickCount + "\n" +
+                "éŒ¯èª¤é»æ“Šï¼š" + wrongClickCount + "\n" +
+                "å®Œæˆé—œå¡ï¼š" + completedRounds + "\n" +
+                "è™•ç†é€Ÿåº¦èˆ‡è¦–è¦ºæœå°‹ï¼š" + cognitiveResult.performanceScore.ToString("F0") + "/100\n" +
+                cognitiveResult.dataQualityNote;
         }
     }
 }
