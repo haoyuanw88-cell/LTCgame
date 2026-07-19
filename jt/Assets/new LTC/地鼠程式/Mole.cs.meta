@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: ecdc45a130a234c438abb8027661812f
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - s1: {instanceID: 0}
+  - s2: {instanceID: 0}
+  - s3: {instanceID: 0}
+  - bombSprite: {fileID: 21300000, guid: 0ff7a29027f4b1d41aa67177216f7dfb, type: 3}
+  - explosionSprite: {instanceID: 0}
+  - hp: {instanceID: 0}
+  - manager: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
