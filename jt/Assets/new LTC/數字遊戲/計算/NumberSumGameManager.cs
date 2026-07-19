@@ -18,7 +18,10 @@ public class NumberSumGameManager : MonoBehaviour
     public TMP_Text timerText;
     public TMP_Text targetText;
     public GameObject resultPanel;
+    public TMP_Text resultTitleText;
+    public TMP_Text resultSummaryText;
     public TMP_Text resultText;
+    public TMP_Text resultNoteText;
 
     [Header("Game Settings")]
     public float gameTime = 60f;
@@ -53,6 +56,9 @@ public class NumberSumGameManager : MonoBehaviour
     private string assessmentSessionId;
     private int randomSeed;
     private float trialStartTime;
+    private float roundStartTime;
+    private int roundActionCount;
+    private int roundResetCount;
     private int trialIndex;
 
     void Start()
@@ -80,7 +86,7 @@ public class NumberSumGameManager : MonoBehaviour
     {
         randomSeed = Random.Range(int.MinValue, int.MaxValue);
         Random.InitState(randomSeed);
-        assessmentSessionId = CognitiveAssessmentService.BeginGame("number_sum", "1.0.0");
+        assessmentSessionId = CognitiveAssessmentService.BeginGame("number_sum", "2.0.0");
         trialIndex = 0;
         score = 0;
         round = 1;
@@ -109,6 +115,9 @@ public class NumberSumGameManager : MonoBehaviour
         originalSprites.Clear();
         selectedButtons.Clear();
         currentSum = 0;
+        roundActionCount = 0;
+        roundResetCount = 0;
+        roundStartTime = Time.time;
 
         int buttonCount = Random.Range(minButtonCount, maxButtonCount + 1);
         buttonCount = Mathf.Clamp(buttonCount, 3, numberButtons.Count);
@@ -233,6 +242,7 @@ public class NumberSumGameManager : MonoBehaviour
         if (!buttonNumbers.ContainsKey(button)) return;
 
         int number = buttonNumbers[button];
+        roundActionCount++;
         int sumBeforeInput = currentSum;
 
         if (selectedButtons.Contains(button))
@@ -257,6 +267,7 @@ public class NumberSumGameManager : MonoBehaviour
         {
             RecordSelectionTrial(number, sumBeforeInput, false, "sum_exceeded_target");
             wrongClickCount++;
+            roundResetCount++;
             score -= wrongPenalty;
 
             if (score < 0)
@@ -305,6 +316,7 @@ public class NumberSumGameManager : MonoBehaviour
 
     void CompleteRound()
     {
+        RecordRoundSummary(TrialOutcome.Correct, "");
         score += scorePerRound;
         completedRoundCount++;
         round++;
@@ -318,6 +330,10 @@ public class NumberSumGameManager : MonoBehaviour
         CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
         {
             trialIndex = trialIndex,
+            roundIndex = round,
+            stepIndex = roundActionCount,
+            eventKind = "selection",
+            stimulusCount = activeButtons.Count,
             randomSeed = randomSeed,
             difficulty = activeButtons.Count,
             condition = "target_sum",
@@ -325,11 +341,24 @@ public class NumberSumGameManager : MonoBehaviour
                        "|sumBefore=" + sumBeforeInput,
             expectedAnswer = targetNumber.ToString(),
             userAnswer = selectedNumber.ToString(),
-            outcome = validAction ? TrialOutcome.Correct : TrialOutcome.Incorrect,
+            outcome = validAction ? TrialOutcome.ValidAction : TrialOutcome.Incorrect,
             reactionTimeMs = Mathf.RoundToInt((Time.time - trialStartTime) * 1000f),
             errorType = errorType
         });
         trialStartTime = Time.time;
+    }
+
+    void RecordRoundSummary(TrialOutcome outcome, string error)
+    {
+        trialIndex++;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord {
+            trialIndex=trialIndex, roundIndex=round, stepIndex=roundActionCount, eventKind="round_summary",
+            randomSeed=randomSeed, difficulty=activeButtons.Count, stimulusCount=activeButtons.Count, condition="target_sum",
+            stimulus=string.Join(",",buttonNumbers.Values)+"|target="+targetNumber+"|actions="+roundActionCount+"|resets="+roundResetCount,
+            expectedAnswer=targetNumber.ToString(), userAnswer=currentSum.ToString(), outcome=outcome,
+            reactionTimeMs=Mathf.RoundToInt((Time.time-roundStartTime)*1000f), roundElapsedMs=Mathf.RoundToInt((Time.time-roundStartTime)*1000f),
+            timedOut=outcome==TrialOutcome.Omitted, errorType=error
+        });
     }
 
     void HideAllButtons()
@@ -363,6 +392,7 @@ public class NumberSumGameManager : MonoBehaviour
 
     void EndGame()
     {
+        RecordRoundSummary(TrialOutcome.Omitted, "timeout");
         isGameRunning = false;
         HideAllButtons();
 
@@ -379,16 +409,11 @@ public class NumberSumGameManager : MonoBehaviour
             resultPanel.SetActive(true);
         }
 
-        if (resultText != null)
-        {
-            resultText.text =
-                "遊戲結束\n" +
-                "分數：" + score + "\n" +
-                "獲得金幣：+" + earnedCoins + "\n" +
-                "完成關卡：" + completedRoundCount + "\n" +
-                "錯誤次數：" + wrongClickCount + "\n" +
-                "執行功能與數字操作：" + cognitiveResult.performanceScore.ToString("F0") + "/100\n" +
-                cognitiveResult.dataQualityNote;
-        }
+        if (resultTitleText != null) resultTitleText.text = "本次測驗完成";
+        if (resultSummaryText != null) resultSummaryText.text = "分數  " + score + "     金幣  +" + earnedCoins;
+        if (resultText != null) resultText.text =
+            "數字規劃表現\n完成關卡  " + completedRoundCount + " 關\n超過目標  " + wrongClickCount + " 次";
+        if (resultNoteText != null) resultNoteText.text =
+            "執行功能與數字推理｜本次表現指數 " + cognitiveResult.performanceScore.ToString("F0") + "/100\n" + cognitiveResult.dataQualityNote;
     }
 }

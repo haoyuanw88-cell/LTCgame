@@ -26,7 +26,10 @@ public class ColorMatchStroopGameManager : MonoBehaviour
     public TMP_Text scoreText;
     public TMP_Text timerText;
     public GameObject resultPanel;
+    public TMP_Text resultTitleText;
+    public TMP_Text resultSummaryText;
     public TMP_Text resultText;
+    public TMP_Text resultNoteText;
 
     [Header("遊戲設定")]
     public float gameTime = 60f;
@@ -47,6 +50,7 @@ public class ColorMatchStroopGameManager : MonoBehaviour
     private ColorWord bottomInkColor;
 
     private bool currentAnswerIsCorrect;
+    private bool currentHighConflict;
 
     private float timeLeft;
     private float questionStartTime;
@@ -74,7 +78,7 @@ public class ColorMatchStroopGameManager : MonoBehaviour
     {
         randomSeed = Random.Range(int.MinValue, int.MaxValue);
         Random.InitState(randomSeed);
-        assessmentSessionId = CognitiveAssessmentService.BeginGame("stroop_color_match", "1.0.0");
+        assessmentSessionId = CognitiveAssessmentService.BeginGame("stroop_color_match", "2.0.0");
         score = 0;
         correctCount = 0;
         wrongCount = 0;
@@ -92,6 +96,8 @@ public class ColorMatchStroopGameManager : MonoBehaviour
         }
 
         BindButtons();
+        if (correctButton != null) correctButton.gameObject.SetActive(true);
+        if (wrongButton != null) wrongButton.gameObject.SetActive(true);
         NextQuestion();
         UpdateUI();
     }
@@ -152,17 +158,19 @@ public class ColorMatchStroopGameManager : MonoBehaviour
 
         questionCount++;
 
-        bool shouldMatch = Random.value < 0.5f;
+        // Balanced 2x2 block: answer relation (match/mismatch) x distractor load (low/high).h).
+        int cell = (questionCount - 1) % 4;
+        bool shouldMatch = cell < 2;
+        currentHighConflict = (cell % 2) == 1;
 
         topMeaning = GetRandomColorWord();
-        topInkColor = GetRandomColorWord();
-
-        bottomMeaning = GetRandomColorWord();
+        topInkColor = currentHighConflict ? GetDifferentColorWord(topMeaning) : topMeaning;
 
         if (shouldMatch)
         {
             bottomInkColor = topMeaning;
         }
+
         else
         {
             do
@@ -171,6 +179,8 @@ public class ColorMatchStroopGameManager : MonoBehaviour
             }
             while (bottomInkColor.colorName == topMeaning.colorName);
         }
+
+        bottomMeaning = currentHighConflict ? GetDifferentColorWord(bottomInkColor) : bottomInkColor;
 
         currentAnswerIsCorrect = topMeaning.colorName == bottomInkColor.colorName;
 
@@ -181,6 +191,13 @@ public class ColorMatchStroopGameManager : MonoBehaviour
     ColorWord GetRandomColorWord()
     {
         return colorWords[Random.Range(0, colorWords.Count)];
+    }
+
+    ColorWord GetDifferentColorWord(ColorWord excluded)
+    {
+        ColorWord value;
+        do { value = GetRandomColorWord(); } while (value.colorName == excluded.colorName);
+        return value;
     }
 
     void UpdateQuestionUI()
@@ -217,9 +234,13 @@ public class ColorMatchStroopGameManager : MonoBehaviour
         CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
         {
             trialIndex = questionCount,
+            roundIndex = questionCount,
+            stepIndex = 1,
+            eventKind = "response",
             randomSeed = randomSeed,
             difficulty = 1,
-            condition = currentAnswerIsCorrect ? "congruent" : "incongruent",
+            condition = (currentAnswerIsCorrect ? "match_" : "mismatch_") +
+                        (currentHighConflict ? "high_conflict" : "low_conflict"),
             stimulus = topMeaning.colorName + "|" + topInkColor.colorName + "|" +
                        bottomMeaning.colorName + "|" + bottomInkColor.colorName,
             expectedAnswer = currentAnswerIsCorrect ? "match" : "mismatch",
@@ -265,6 +286,20 @@ public class ColorMatchStroopGameManager : MonoBehaviour
     void EndGame()
     {
         isGameRunning = false;
+        if (correctButton != null) correctButton.gameObject.SetActive(false);
+        if (wrongButton != null) wrongButton.gameObject.SetActive(false);
+
+        if (questionStartTime > 0f)
+        {
+            CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord {
+                trialIndex=questionCount, roundIndex=questionCount, stepIndex=1, eventKind="response",
+                randomSeed=randomSeed, difficulty=1,
+                condition=(currentAnswerIsCorrect?"match_":"mismatch_")+(currentHighConflict?"high_conflict":"low_conflict"),
+                stimulus=topMeaning.colorName+"|"+topInkColor.colorName+"|"+bottomMeaning.colorName+"|"+bottomInkColor.colorName,
+                expectedAnswer=currentAnswerIsCorrect?"match":"mismatch", userAnswer="", outcome=TrialOutcome.Omitted,
+                reactionTimeMs=Mathf.RoundToInt((Time.time-questionStartTime)*1000f), timedOut=true, errorType="timeout"
+            });
+        }
 
         earnedCoins = correctCount * coinPerCorrect + score / coinPerScoreUnit;
         CoinData.AddCoins(earnedCoins);
@@ -283,20 +318,14 @@ public class ColorMatchStroopGameManager : MonoBehaviour
             resultPanel.SetActive(true);
         }
 
-        if (resultText != null)
-        {
-            resultText.text =
-                "遊戲結束\n" +
-                "分數：" + score + "\n" +
-                "獲得金幣：+" + earnedCoins + "\n" +
-                "正確：" + correctCount + "\n" +
-                "錯誤：" + wrongCount + "\n" +
-                "相同平均反應：" + matchAvg.ToString("F2") + " 秒\n" +
-                "不同平均反應：" + mismatchAvg.ToString("F2") + " 秒\n" +
-                "判斷干擾值：" + interference.ToString("F2") + " 秒\n" +
-                "注意力與抑制控制：" + cognitiveResult.performanceScore.ToString("F0") + "/100\n" +
-                cognitiveResult.dataQualityNote;
-        }
+        if (resultTitleText != null) resultTitleText.text = "本次測驗完成";
+        if (resultSummaryText != null) resultSummaryText.text = "分數  " + score + "     金幣  +" + earnedCoins;
+        if (resultText != null) resultText.text =
+            "答題表現\n正確  " + correctCount + " 次     錯誤  " + wrongCount + " 次\n\n" +
+            "反應速度\n相同題  " + matchAvg.ToString("F2") + " 秒\n不同題  " + mismatchAvg.ToString("F2") + " 秒\n" +
+            "干擾差值  " + interference.ToString("F2") + " 秒";
+        if (resultNoteText != null) resultNoteText.text =
+            "注意力與抑制控制｜本次表現指數 " + cognitiveResult.performanceScore.ToString("F0") + "/100\n" + cognitiveResult.dataQualityNote;
     }
 
     float Average(List<float> values)

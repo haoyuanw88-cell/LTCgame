@@ -17,7 +17,10 @@ public class NumberOrderPoolGameManager : MonoBehaviour
     public TMP_Text scoreText;
     public TMP_Text timerText;
     public GameObject resultPanel;
+    public TMP_Text resultTitleText;
+    public TMP_Text resultSummaryText;
     public TMP_Text resultText;
+    public TMP_Text resultNoteText;
 
     [Header("錯誤提示")]
     public GameObject wrongImage;
@@ -57,6 +60,7 @@ public class NumberOrderPoolGameManager : MonoBehaviour
     private string assessmentSessionId;
     private int randomSeed;
     private float trialStartTime;
+    private float roundStartTime;
     private int trialIndex;
 
     void Start()
@@ -89,7 +93,7 @@ public class NumberOrderPoolGameManager : MonoBehaviour
     {
         randomSeed = Random.Range(int.MinValue, int.MaxValue);
         Random.InitState(randomSeed);
-        assessmentSessionId = CognitiveAssessmentService.BeginGame("number_order", "1.0.0");
+        assessmentSessionId = CognitiveAssessmentService.BeginGame("number_order", "2.0.0");
         trialIndex = 0;
         score = 0;
         round = 1;
@@ -146,6 +150,7 @@ public class NumberOrderPoolGameManager : MonoBehaviour
         sortedNumbers.AddRange(currentNumbers);
         sortedNumbers.Sort();
         trialStartTime = Time.time;
+        roundStartTime = Time.time;
     }
 
     int GenerateUniqueNumber()
@@ -213,6 +218,10 @@ public class NumberOrderPoolGameManager : MonoBehaviour
         CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
         {
             trialIndex = trialIndex,
+            roundIndex = round,
+            stepIndex = currentTargetIndex + 1,
+            eventKind = "response",
+            stimulusCount = activeRoundButtons.Count,
             randomSeed = randomSeed,
             difficulty = activeRoundButtons.Count,
             condition = round >= negativeStartRound ? "positive_and_negative" : "positive_only",
@@ -235,12 +244,14 @@ public class NumberOrderPoolGameManager : MonoBehaviour
 
             if (currentTargetIndex >= sortedNumbers.Count)
             {
+                RecordRoundSummary(TrialOutcome.Correct, "");
                 round++;
                 SpawnRound();
             }
         }
         else
         {
+            RecordRoundSummary(TrialOutcome.Incorrect, "sequence_error");
             score -= wrongPenalty;
             wrongClickCount++;
 
@@ -253,6 +264,19 @@ public class NumberOrderPoolGameManager : MonoBehaviour
         }
 
         UpdateUI();
+    }
+
+    void RecordRoundSummary(TrialOutcome outcome, string error)
+    {
+        trialIndex++;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord {
+            trialIndex=trialIndex, roundIndex=round, stepIndex=currentTargetIndex, eventKind="round_summary",
+            randomSeed=randomSeed, difficulty=activeRoundButtons.Count, stimulusCount=activeRoundButtons.Count,
+            condition=round>=negativeStartRound?"positive_and_negative":"positive_only", stimulus=string.Join(",",currentNumbers),
+            expectedAnswer=string.Join(",",sortedNumbers), userAnswer=currentTargetIndex.ToString(), outcome=outcome,
+            reactionTimeMs=Mathf.RoundToInt((Time.time-roundStartTime)*1000f), roundElapsedMs=Mathf.RoundToInt((Time.time-roundStartTime)*1000f),
+            timedOut=outcome==TrialOutcome.Omitted, errorType=error
+        });
     }
 
     IEnumerator ShowWrongThenNextRound()
@@ -316,6 +340,7 @@ public class NumberOrderPoolGameManager : MonoBehaviour
 
     void EndGame()
     {
+        if (!isShowingWrong && currentTargetIndex < sortedNumbers.Count) RecordRoundSummary(TrialOutcome.Omitted, "timeout");
         isGameRunning = false;
         HideAllButtons();
 
@@ -339,17 +364,11 @@ public class NumberOrderPoolGameManager : MonoBehaviour
             resultPanel.SetActive(true);
         }
 
-        if (resultText != null)
-        {
-            resultText.text =
-                "遊戲結束\n" +
-                "分數：" + score + "\n" +
-                "獲得金幣：+" + earnedCoins + "\n" +
-                "正確點擊：" + correctClickCount + "\n" +
-                "錯誤點擊：" + wrongClickCount + "\n" +
-                "完成關卡：" + completedRounds + "\n" +
-                "處理速度與視覺搜尋：" + cognitiveResult.performanceScore.ToString("F0") + "/100\n" +
-                cognitiveResult.dataQualityNote;
-        }
+        if (resultTitleText != null) resultTitleText.text = "本次測驗完成";
+        if (resultSummaryText != null) resultSummaryText.text = "分數  " + score + "     金幣  +" + earnedCoins;
+        if (resultText != null) resultText.text =
+            "搜尋與排序表現\n完成關卡  " + completedRounds + " 關\n正確點擊  " + correctClickCount + " 次\n錯誤點擊  " + wrongClickCount + " 次";
+        if (resultNoteText != null) resultNoteText.text =
+            "處理速度與視覺搜尋｜本次表現指數 " + cognitiveResult.performanceScore.ToString("F0") + "/100\n" + cognitiveResult.dataQualityNote;
     }
 }
