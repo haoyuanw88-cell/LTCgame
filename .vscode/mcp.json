@@ -1,0 +1,12 @@
+{
+    "servers": {
+        "encore-local": {
+            "args": [
+                "mcp",
+                "run",
+                "--app=hello-8shi"
+            ],
+            "command": "encore"
+        }
+    }
+}
