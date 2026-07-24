@@ -56,17 +56,6 @@ public class SeniorTrueFalseQuiz : MonoBehaviour
     private int score;
     private bool acceptingAnswer;
 
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Bootstrap()
-    {
-        if (FindAnyObjectByType<SeniorTrueFalseQuiz>() != null)
-        {
-            return;
-        }
-
-        new GameObject("Senior True False Quiz").AddComponent<SeniorTrueFalseQuiz>();
-    }
-
     private void Start()
     {
         quizFont = Font.CreateDynamicFontFromOSFont(
