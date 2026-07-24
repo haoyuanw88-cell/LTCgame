@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using LTCCognitiveAssessment;
 
 public class ColorMatchStroopGameManager : MonoBehaviour
@@ -67,6 +68,7 @@ public class ColorMatchStroopGameManager : MonoBehaviour
     private bool isGameRunning = false;
     private string assessmentSessionId;
     private int randomSeed;
+    private readonly int[] conditionBlockOrder = { 0, 1, 2, 3 };
 
     void Start()
     {
@@ -76,9 +78,14 @@ public class ColorMatchStroopGameManager : MonoBehaviour
 
     public void StartGame()
     {
+        if (!Mathf.Approximately(gameTime, 60f))
+        {
+            Debug.LogWarning("評估協定 3.0 固定正式測驗為 60 秒，已覆寫 Inspector 設定。");
+            gameTime = 60f;
+        }
         randomSeed = Random.Range(int.MinValue, int.MaxValue);
         Random.InitState(randomSeed);
-        assessmentSessionId = CognitiveAssessmentService.BeginGame("stroop_color_match", "2.0.0");
+        assessmentSessionId = CognitiveAssessmentService.BeginGame("stroop_color_match", CognitiveProtocolRegistry.ProtocolVersion);
         score = 0;
         correctCount = 0;
         wrongCount = 0;
@@ -86,6 +93,7 @@ public class ColorMatchStroopGameManager : MonoBehaviour
         earnedCoins = 0;
         timeLeft = gameTime;
         isGameRunning = true;
+        BindResultReturnButton();
 
         matchReactionTimes.Clear();
         mismatchReactionTimes.Clear();
@@ -101,6 +109,27 @@ public class ColorMatchStroopGameManager : MonoBehaviour
         NextQuestion();
         UpdateUI();
     }
+
+private void BindResultReturnButton()
+    {
+        if (resultPanel == null) return;
+        Button returnButton = resultPanel.GetComponentInChildren<Button>(true);
+        if (returnButton == null)
+        {
+            Debug.LogWarning("結算頁找不到返回主頁按鈕。");
+            return;
+        }
+        returnButton.onClick.RemoveAllListeners();
+        returnButton.onClick.AddListener(ReturnToMainMenu);
+        TMP_Text label = returnButton.GetComponentInChildren<TMP_Text>(true);
+        if (label != null) label.text = "返回主頁";
+    }
+
+    public void ReturnToMainMenu()
+    {
+        SceneManager.LoadScene("GameScene");
+    }
+
 
     void Update()
     {
@@ -158,8 +187,10 @@ public class ColorMatchStroopGameManager : MonoBehaviour
 
         questionCount++;
 
-        // Balanced 2x2 block: answer relation (match/mismatch) x distractor load (low/high).h).
-        int cell = (questionCount - 1) % 4;
+        // 每四題維持 2x2 條件平衡，但區塊內順序隨機，降低固定順序造成的練習與疲勞偏差。
+        int positionInBlock = (questionCount - 1) % conditionBlockOrder.Length;
+        if (positionInBlock == 0) ShuffleConditionBlock();
+        int cell = conditionBlockOrder[positionInBlock];
         bool shouldMatch = cell < 2;
         currentHighConflict = (cell % 2) == 1;
 
@@ -186,6 +217,17 @@ public class ColorMatchStroopGameManager : MonoBehaviour
 
         UpdateQuestionUI();
         questionStartTime = Time.time;
+    }
+
+    void ShuffleConditionBlock()
+    {
+        for (int index = conditionBlockOrder.Length - 1; index > 0; index--)
+        {
+            int swapIndex = Random.Range(0, index + 1);
+            int value = conditionBlockOrder[index];
+            conditionBlockOrder[index] = conditionBlockOrder[swapIndex];
+            conditionBlockOrder[swapIndex] = value;
+        }
     }
 
     ColorWord GetRandomColorWord()
@@ -325,7 +367,7 @@ public class ColorMatchStroopGameManager : MonoBehaviour
             "反應速度\n相同題  " + matchAvg.ToString("F2") + " 秒\n不同題  " + mismatchAvg.ToString("F2") + " 秒\n" +
             "干擾差值  " + interference.ToString("F2") + " 秒";
         if (resultNoteText != null) resultNoteText.text =
-            "注意力與抑制控制｜本次表現指數 " + cognitiveResult.performanceScore.ToString("F0") + "/100\n" + cognitiveResult.dataQualityNote;
+            "注意力與抑制控制｜本次任務指數 " + cognitiveResult.performanceScore.ToString("F0") + "/100\n" + cognitiveResult.dataQualityNote;
     }
 
     float Average(List<float> values)

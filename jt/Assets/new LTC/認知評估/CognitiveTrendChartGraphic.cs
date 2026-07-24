@@ -12,16 +12,18 @@ public class CognitiveTrendChartGraphic : MaskableGraphic
     [SerializeField] private float lineThickness = 4f;
     [SerializeField] private float[] values = new float[30];
 
-    public void SetValues(float[] newValues, Color newLineColor)
+public void SetValues(float[] newValues, Color newLineColor)
     {
-        values = new float[30];
+        int valueCount = newValues == null ? 30 : Mathf.Max(2, newValues.Length);
+        values = new float[valueCount];
+        for (int index = 0; index < values.Length; index++) values[index] = float.NaN;
         if (newValues != null)
             Array.Copy(newValues, values, Mathf.Min(values.Length, newValues.Length));
         lineColor = newLineColor;
         SetVerticesDirty();
     }
 
-    protected override void OnPopulateMesh(VertexHelper vh)
+protected override void OnPopulateMesh(VertexHelper vh)
     {
         vh.Clear();
         Rect r = rectTransform.rect;
@@ -35,7 +37,6 @@ public class CognitiveTrendChartGraphic : MaskableGraphic
             float y = Mathf.Lerp(bottom, top, i / 4f);
             AddLine(vh, new Vector2(left, y), new Vector2(right, y), gridThickness, gridColor);
         }
-
         for (int i = 0; i <= 6; i++)
         {
             float x = Mathf.Lerp(left, right, i / 6f);
@@ -44,15 +45,20 @@ public class CognitiveTrendChartGraphic : MaskableGraphic
 
         AddLine(vh, new Vector2(left, bottom), new Vector2(right, bottom), 3f,
             new Color(lineColor.r, lineColor.g, lineColor.b, 0.75f));
-
         if (values == null || values.Length < 2) return;
-        for (int i = 0; i < values.Length - 1; i++)
+
+        bool hasPrevious = false;
+        Vector2 previousPoint = Vector2.zero;
+        for (int i = 0; i < values.Length; i++)
         {
-            Vector2 a = new Vector2(Mathf.Lerp(left, right, i / 29f),
+            if (float.IsNaN(values[i])) continue;
+            Vector2 point = new Vector2(
+                Mathf.Lerp(left, right, i / (float)(values.Length - 1)),
                 Mathf.Lerp(bottom, top, Mathf.Clamp01(values[i] / 100f)));
-            Vector2 b = new Vector2(Mathf.Lerp(left, right, (i + 1) / 29f),
-                Mathf.Lerp(bottom, top, Mathf.Clamp01(values[i + 1] / 100f)));
-            AddLine(vh, a, b, lineThickness, lineColor);
+            if (hasPrevious) AddLine(vh, previousPoint, point, lineThickness, lineColor);
+            AddPoint(vh, point, lineThickness * 1.25f, lineColor);
+            previousPoint = point;
+            hasPrevious = true;
         }
     }
 
@@ -67,5 +73,21 @@ public class CognitiveTrendChartGraphic : MaskableGraphic
         vh.AddVert(b - normal, color, Vector2.zero);
         vh.AddTriangle(start, start + 1, start + 2);
         vh.AddTriangle(start, start + 2, start + 3);
+    }
+
+
+private static void AddPoint(VertexHelper vh, Vector2 center, float radius, Color color)
+    {
+        const int segments = 12;
+        int start = vh.currentVertCount;
+        vh.AddVert(center, color, Vector2.zero);
+        for (int index = 0; index <= segments; index++)
+        {
+            float angle = index * Mathf.PI * 2f / segments;
+            Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+            vh.AddVert(center + offset, color, Vector2.zero);
+        }
+        for (int index = 0; index < segments; index++)
+            vh.AddTriangle(start, start + index + 1, start + index + 2);
     }
 }

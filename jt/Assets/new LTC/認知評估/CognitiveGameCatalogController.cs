@@ -12,6 +12,8 @@ using UnityEngine.UI;
 public class CognitiveGameCatalogController : MonoBehaviour
 {
     private const string CanvasName = "Cognitive Catalog Canvas";
+    private const string LastDailyLoginKey = "LTC_LastDailyLoginDate";
+    private const int DailyLoginRewardCoins = 20;
 
     [Header("Chinese UI")]
     [SerializeField] private TMP_FontAsset chineseFont;
@@ -112,12 +114,21 @@ public class CognitiveGameCatalogController : MonoBehaviour
     private GameObject bottomNavigation;
     private TMP_Text headerName;
     private TMP_Text headerCoins;
+    private TMP_Text statisticsTitle;
     private TMP_Text statisticsChartLabel;
+    private TMP_Text[] statisticsDateLabels = new TMP_Text[4];
     private TMP_Text statisticsAttentionScore;
     private TMP_Text statisticsSpeedScore;
     private TMP_Text statisticsExecutiveScore;
     private CognitiveTrendChartGraphic trendChart;
     private TMP_Text profileText;
+    private TMP_InputField profileNameInput;
+    private TMP_Text profileNameStatus;
+    private TMP_Text dailyLoginButtonText;
+    private GameObject dailyLoginPopup;
+    private TMP_Text dailyLoginPopupMessage;
+    private Button dailyLoginClaimButton;
+    private TMP_Text dailyLoginClaimButtonText;
     private TMP_Text detailDomain;
     private TMP_Text detailTitle;
     private TMP_Text detailSummary;
@@ -125,6 +136,7 @@ public class CognitiveGameCatalogController : MonoBehaviour
     private TMP_Text detailRecord;
     private GameDefinition selectedGame;
     private ChartSelection chartSelection = ChartSelection.Composite;
+    private int statisticsRangeDays = 30;
 
     private enum ChartSelection
     {
@@ -147,8 +159,36 @@ public class CognitiveGameCatalogController : MonoBehaviour
 
     private void EnsureInterfaceExists()
     {
-        if (transform.Find(CanvasName) == null) BuildInterface();
+        Transform existingCanvas = transform.Find(CanvasName);
+        if (existingCanvas == null)
+        {
+            BuildInterface();
+            return;
+        }
+
+        // Keep editor-authored scenes in sync when the navigation structure evolves.
+        Transform navigation = existingCanvas.Find("底部導覽");
+        bool interfaceIsCurrent = navigation != null &&
+                                  navigation.Find("商店") != null &&
+                                  navigation.Find("寵物") != null &&
+                                  existingCanvas.Find("我的頁/個人資料內容/名稱輸入") != null &&
+                                  existingCanvas.Find("每日登入彈窗") != null;
+        if (!interfaceIsCurrent && !Application.isPlaying)
+        {
+            DestroyImmediate(existingCanvas.gameObject);
+            BuildInterface();
+        }
     }
+
+[ContextMenu("Rebuild Cognitive Catalog UI")]
+    public void RebuildInterfaceForEditor()
+    {
+        if (Application.isPlaying) return;
+        Transform existing = transform.Find(CanvasName);
+        if (existing != null) DestroyImmediate(existing.gameObject);
+        BuildInterface();
+    }
+
 
     private void BuildInterface()
     {
@@ -178,10 +218,12 @@ public class CognitiveGameCatalogController : MonoBehaviour
         ApplyPageBackground(detailPage);
         BuildDetailPage(detailPage.transform);
         bottomNavigation = BuildBottomNavigation(canvasObject.transform);
+        dailyLoginPopup = BuildDailyLoginPopup(canvasObject.transform);
 
         statisticsPage.SetActive(false);
         profilePage.SetActive(false);
         detailPage.SetActive(false);
+        dailyLoginPopup.SetActive(false);
     }
 
     private void BuildCatalogPage(Transform parent)
@@ -323,53 +365,59 @@ public class CognitiveGameCatalogController : MonoBehaviour
         }
     }
 
-    private void BuildStatisticsPage(Transform parent)
+private void BuildStatisticsPage(Transform parent)
     {
-        TMP_Text title = CreateText(parent, "統計標題", "過去 30 天認知趨勢", 40, FontStyles.Bold,
+        statisticsTitle = CreateText(parent, "統計標題", "過去 30 天認知趨勢", 42, FontStyles.Bold,
             TextAlignmentOptions.Center);
-        title.color = textColor;
-        SetRect(title.rectTransform, new Vector2(0.08f, 0.885f), new Vector2(0.92f, 0.97f), Vector2.zero,
-            Vector2.zero);
+        statisticsTitle.color = textColor;
+        SetRect(statisticsTitle.rectTransform, new Vector2(0.08f, 0.885f), new Vector2(0.92f, 0.97f),
+            Vector2.zero, Vector2.zero);
 
-        TMP_Text subtitle = CreateText(parent, "統計副標題", "分數用來觀察個人長期變化，不代表醫療診斷", 20,
+        TMP_Text subtitle = CreateText(parent, "統計副標題", "分數用來觀察個人長期變化，不代表醫療診斷", 22,
             FontStyles.Normal, TextAlignmentOptions.Center);
         subtitle.color = new Color(0.43f, 0.46f, 0.42f);
-        SetRect(subtitle.rectTransform, new Vector2(0.08f, 0.83f), new Vector2(0.92f, 0.89f), Vector2.zero,
-            Vector2.zero);
+        SetRect(subtitle.rectTransform, new Vector2(0.08f, 0.83f), new Vector2(0.92f, 0.89f),
+            Vector2.zero, Vector2.zero);
 
         statisticsAttentionScore = CreateScoreCard(parent, "注意力摘要", "注意力與抑制", accentColor, 0.06f, 0.34f);
         statisticsSpeedScore = CreateScoreCard(parent, "速度摘要", "處理速度", orangeColor, 0.36f, 0.64f);
-        statisticsExecutiveScore = CreateScoreCard(parent, "執行摘要", "執行功能", new Color(0.49f, 0.48f, 0.72f),
-            0.66f, 0.94f);
+        statisticsExecutiveScore = CreateScoreCard(parent, "執行摘要", "執行功能",
+            new Color(0.49f, 0.48f, 0.72f), 0.66f, 0.94f);
 
-        GameObject chartPanel = CreatePanel(parent, "30天趨勢圖", surfaceColor, new Vector2(0.06f, 0.285f),
+        GameObject chartPanel = CreatePanel(parent, "認知趨勢圖", surfaceColor, new Vector2(0.06f, 0.285f),
             new Vector2(0.94f, 0.65f));
         AddSoftShadow(chartPanel);
-        statisticsChartLabel = CreateText(chartPanel.transform, "目前能力", "綜合認知能力", 24, FontStyles.Bold,
-            TextAlignmentOptions.Left);
+
+        statisticsChartLabel = CreateText(chartPanel.transform, "目前能力", "綜合認知表現", 25,
+            FontStyles.Bold, TextAlignmentOptions.Left);
         statisticsChartLabel.color = textColor;
-        SetRect(statisticsChartLabel.rectTransform, new Vector2(0.05f, 0.84f), new Vector2(0.72f, 0.97f),
+        SetRect(statisticsChartLabel.rectTransform, new Vector2(0.05f, 0.84f), new Vector2(0.57f, 0.97f),
             Vector2.zero, Vector2.zero);
-        TMP_Text range = CreateText(chartPanel.transform, "分數範圍", "100\n\n50\n\n0", 16, FontStyles.Normal,
-            TextAlignmentOptions.Right);
+
+        CreateStatisticsRangeButton(chartPanel.transform, 7, 0.60f, 0.71f);
+        CreateStatisticsRangeButton(chartPanel.transform, 30, 0.73f, 0.84f);
+        CreateStatisticsRangeButton(chartPanel.transform, 90, 0.86f, 0.97f);
+
+        TMP_Text range = CreateText(chartPanel.transform, "分數刻度", "100\n\n50\n\n0", 19,
+            FontStyles.Normal, TextAlignmentOptions.Right);
         range.color = mutedColor;
-        SetRect(range.rectTransform, new Vector2(0.01f, 0.12f), new Vector2(0.07f, 0.80f), Vector2.zero,
-            Vector2.zero);
+        SetRect(range.rectTransform, new Vector2(0.01f, 0.16f), new Vector2(0.07f, 0.80f),
+            Vector2.zero, Vector2.zero);
 
         Color grid = new Color(0.36f, 0.43f, 0.37f, 0.28f);
-        for (int i = 0; i <= 4; i++)
+        for (int index = 0; index <= 4; index++)
         {
-            float y = Mathf.Lerp(0.16f, 0.80f, i / 4f);
-            GameObject line = CreatePanel(chartPanel.transform, "水平格線_" + i, grid,
+            float y = Mathf.Lerp(0.20f, 0.80f, index / 4f);
+            GameObject line = CreatePanel(chartPanel.transform, "水平格線_" + index, grid,
                 new Vector2(0.08f, y), new Vector2(0.96f, y));
-            line.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, i == 0 ? 4f : 2f);
+            line.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, index == 0 ? 4f : 2f);
             line.GetComponent<Image>().raycastTarget = false;
         }
-        for (int i = 0; i <= 6; i++)
+        for (int index = 0; index <= 3; index++)
         {
-            float x = Mathf.Lerp(0.08f, 0.96f, i / 6f);
-            GameObject line = CreatePanel(chartPanel.transform, "垂直格線_" + i, grid,
-                new Vector2(x, 0.16f), new Vector2(x, 0.80f));
+            float x = Mathf.Lerp(0.08f, 0.96f, index / 3f);
+            GameObject line = CreatePanel(chartPanel.transform, "垂直格線_" + index, grid,
+                new Vector2(x, 0.20f), new Vector2(x, 0.80f));
             line.GetComponent<RectTransform>().sizeDelta = new Vector2(2f, 0f);
             line.GetComponent<Image>().raycastTarget = false;
         }
@@ -378,13 +426,19 @@ public class CognitiveGameCatalogController : MonoBehaviour
             typeof(CognitiveTrendChartGraphic));
         chartObject.transform.SetParent(chartPanel.transform, false);
         trendChart = chartObject.GetComponent<CognitiveTrendChartGraphic>();
-        SetRect(chartObject.GetComponent<RectTransform>(), new Vector2(0.08f, 0.16f), new Vector2(0.96f, 0.80f),
+        SetRect(chartObject.GetComponent<RectTransform>(), new Vector2(0.08f, 0.20f), new Vector2(0.96f, 0.80f),
             Vector2.zero, Vector2.zero);
-        TMP_Text days = CreateText(chartPanel.transform, "日期刻度", "30天前　　　　　　20天前　　　　　　10天前　　　　　　今天",
-            15, FontStyles.Normal, TextAlignmentOptions.Center);
-        days.color = mutedColor;
-        SetRect(days.rectTransform, new Vector2(0.08f, 0.02f), new Vector2(0.96f, 0.15f), Vector2.zero,
-            Vector2.zero);
+
+        statisticsDateLabels = new TMP_Text[4];
+        statisticsDateLabels[0] = CreateAxisLabel(chartPanel.transform, "日期_起點", TextAlignmentOptions.Left,
+            0.05f, 0.25f);
+        statisticsDateLabels[1] = CreateAxisLabel(chartPanel.transform, "日期_三分之一", TextAlignmentOptions.Center,
+            0.25f, 0.49f);
+        statisticsDateLabels[2] = CreateAxisLabel(chartPanel.transform, "日期_三分之二", TextAlignmentOptions.Center,
+            0.51f, 0.75f);
+        statisticsDateLabels[3] = CreateAxisLabel(chartPanel.transform, "日期_今天", TextAlignmentOptions.Right,
+            0.75f, 0.98f);
+        UpdateStatisticsDateLabels();
 
         CreateStatisticsFilter(parent, "綜合", "綜合", accentColor, 0.06f, 0.265f);
         CreateStatisticsFilter(parent, "注意力", "注意力", new Color(0.37f, 0.69f, 0.57f), 0.275f, 0.475f);
@@ -401,11 +455,73 @@ public class CognitiveGameCatalogController : MonoBehaviour
             Vector2.zero);
         GameObject panel = CreatePanel(parent, "個人資料內容", surfaceColor, new Vector2(0.07f, 0.20f),
             new Vector2(0.93f, 0.80f));
-        profileText = CreateText(panel.transform, "個人資料", BuildProfileText(), 28, FontStyles.Normal,
+
+        TMP_Text nameLabel = CreateText(panel.transform, "名稱標題", "使用者名稱", 25, FontStyles.Bold,
+            TextAlignmentOptions.Left);
+        SetRect(nameLabel.rectTransform, new Vector2(0.06f, 0.79f), new Vector2(0.58f, 0.91f), Vector2.zero,
+            Vector2.zero);
+
+        profileNameInput = CreateInputField(panel.transform, "名稱輸入", "請輸入名稱", GetPlayerName());
+        SetRect(profileNameInput.GetComponent<RectTransform>(), new Vector2(0.06f, 0.61f),
+            new Vector2(0.45f, 0.78f), Vector2.zero, Vector2.zero);
+        Button saveName = CreateButton(panel.transform, "儲存名稱", "儲存名稱", accentColor);
+        SetRect(saveName.GetComponent<RectTransform>(), new Vector2(0.47f, 0.61f), new Vector2(0.62f, 0.78f),
+            Vector2.zero, Vector2.zero);
+        profileNameStatus = CreateText(panel.transform, "名稱狀態", "名稱會顯示在首頁與個人資料中", 18,
+            FontStyles.Normal, TextAlignmentOptions.Left);
+        profileNameStatus.color = new Color(0.38f, 0.43f, 0.39f);
+        SetRect(profileNameStatus.rectTransform, new Vector2(0.06f, 0.51f), new Vector2(0.62f, 0.61f),
+            Vector2.zero, Vector2.zero);
+
+        profileText = CreateText(panel.transform, "個人資料", BuildProfileText(), 23, FontStyles.Normal,
             TextAlignmentOptions.TopLeft);
         profileText.color = textColor;
-        SetRect(profileText.rectTransform, new Vector2(0.07f, 0.10f), new Vector2(0.93f, 0.90f), Vector2.zero,
+        SetRect(profileText.rectTransform, new Vector2(0.06f, 0.08f), new Vector2(0.64f, 0.49f), Vector2.zero,
             Vector2.zero);
+
+        Button settings = CreateButton(panel.transform, "設定", "設定（開發中）", mutedColor);
+        SetRect(settings.GetComponent<RectTransform>(), new Vector2(0.70f, 0.76f), new Vector2(0.93f, 0.91f),
+            Vector2.zero, Vector2.zero);
+        settings.interactable = false;
+
+        Button dailyLogin = CreateCircleButton(panel.transform, "每日登入", orangeColor);
+        SetRect(dailyLogin.GetComponent<RectTransform>(), new Vector2(0.72f, 0.22f), new Vector2(0.91f, 0.70f),
+            Vector2.zero, Vector2.zero);
+        dailyLoginButtonText = CreateText(dailyLogin.transform, "文字", "每日登入\n可領取", 24, FontStyles.Bold,
+            TextAlignmentOptions.Center);
+        dailyLoginButtonText.color = Color.white;
+        Stretch(dailyLoginButtonText.rectTransform, 18f);
+    }
+
+    private GameObject BuildDailyLoginPopup(Transform parent)
+    {
+        GameObject overlay = CreatePanel(parent, "每日登入彈窗", new Color(0.10f, 0.12f, 0.10f, 0.66f),
+            Vector2.zero, Vector2.one);
+        GameObject card = CreatePanel(overlay.transform, "簽到卡片", surfaceColor, new Vector2(0.28f, 0.21f),
+            new Vector2(0.72f, 0.79f));
+        AddSoftShadow(card);
+
+        TMP_Text title = CreateText(card.transform, "標題", "每日登入獎勵", 38, FontStyles.Bold,
+            TextAlignmentOptions.Center);
+        title.color = textColor;
+        SetRect(title.rectTransform, new Vector2(0.08f, 0.75f), new Vector2(0.92f, 0.93f), Vector2.zero,
+            Vector2.zero);
+
+        dailyLoginPopupMessage = CreateText(card.transform, "說明", string.Empty, 25, FontStyles.Normal,
+            TextAlignmentOptions.Center);
+        dailyLoginPopupMessage.color = textColor;
+        SetRect(dailyLoginPopupMessage.rectTransform, new Vector2(0.10f, 0.40f), new Vector2(0.90f, 0.73f),
+            Vector2.zero, Vector2.zero);
+
+        dailyLoginClaimButton = CreateButton(card.transform, "領取", "領取 20 金幣", orangeColor);
+        SetRect(dailyLoginClaimButton.GetComponent<RectTransform>(), new Vector2(0.13f, 0.17f),
+            new Vector2(0.58f, 0.34f), Vector2.zero, Vector2.zero);
+        dailyLoginClaimButtonText = dailyLoginClaimButton.GetComponentInChildren<TMP_Text>();
+
+        Button close = CreateButton(card.transform, "稍後再說", "稍後再說", mutedColor);
+        SetRect(close.GetComponent<RectTransform>(), new Vector2(0.62f, 0.17f), new Vector2(0.87f, 0.34f),
+            Vector2.zero, Vector2.zero);
+        return overlay;
     }
 
     private void BuildDetailPage(Transform parent)
@@ -452,13 +568,19 @@ public class CognitiveGameCatalogController : MonoBehaviour
         GameObject bar = CreatePanel(parent, "底部導覽", surfaceColor, new Vector2(0.18f, 0.018f),
             new Vector2(0.82f, 0.145f));
         Button gamesButton = CreateButton(bar.transform, "遊戲", "遊戲", accentColor);
-        SetRect(gamesButton.GetComponent<RectTransform>(), new Vector2(0.02f, 0.10f), new Vector2(0.32f, 0.90f),
+        SetRect(gamesButton.GetComponent<RectTransform>(), new Vector2(0.01f, 0.10f), new Vector2(0.19f, 0.90f),
             Vector2.zero, Vector2.zero);
         Button statsButton = CreateButton(bar.transform, "統計", "統計", orangeColor);
-        SetRect(statsButton.GetComponent<RectTransform>(), new Vector2(0.35f, 0.10f), new Vector2(0.65f, 0.90f),
+        SetRect(statsButton.GetComponent<RectTransform>(), new Vector2(0.21f, 0.10f), new Vector2(0.39f, 0.90f),
+            Vector2.zero, Vector2.zero);
+        Button shopButton = CreateButton(bar.transform, "商店", "商店", new Color(0.82f, 0.60f, 0.26f, 1f));
+        SetRect(shopButton.GetComponent<RectTransform>(), new Vector2(0.41f, 0.10f), new Vector2(0.59f, 0.90f),
+            Vector2.zero, Vector2.zero);
+        Button petButton = CreateButton(bar.transform, "寵物", "寵物", new Color(0.48f, 0.67f, 0.76f, 1f));
+        SetRect(petButton.GetComponent<RectTransform>(), new Vector2(0.61f, 0.10f), new Vector2(0.79f, 0.90f),
             Vector2.zero, Vector2.zero);
         Button mineButton = CreateButton(bar.transform, "我的", "我的", mutedColor);
-        SetRect(mineButton.GetComponent<RectTransform>(), new Vector2(0.68f, 0.10f), new Vector2(0.98f, 0.90f),
+        SetRect(mineButton.GetComponent<RectTransform>(), new Vector2(0.81f, 0.10f), new Vector2(0.99f, 0.90f),
             Vector2.zero, Vector2.zero);
         return bar;
     }
@@ -472,17 +594,32 @@ public class CognitiveGameCatalogController : MonoBehaviour
         profilePage = root.Find("我的頁")?.gameObject;
         detailPage = root.Find("遊戲詳情")?.gameObject;
         bottomNavigation = root.Find("底部導覽")?.gameObject;
+        dailyLoginPopup = root.Find("每日登入彈窗")?.gameObject;
         if (catalogPage == null || statisticsPage == null || profilePage == null || detailPage == null) return;
 
         Transform header = catalogPage.transform.Find("玩家資訊列");
         headerName = header?.Find("玩家名稱")?.GetComponent<TMP_Text>();
         headerCoins = header?.Find("金幣區/金幣數量")?.GetComponent<TMP_Text>();
-        statisticsChartLabel = statisticsPage.transform.Find("30天趨勢圖/目前能力")?.GetComponent<TMP_Text>();
-        trendChart = statisticsPage.transform.Find("30天趨勢圖/折線圖")?.GetComponent<CognitiveTrendChartGraphic>();
+        statisticsTitle = statisticsPage.transform.Find("統計標題")?.GetComponent<TMP_Text>();
+        statisticsChartLabel = statisticsPage.transform.Find("認知趨勢圖/目前能力")?.GetComponent<TMP_Text>();
+        trendChart = statisticsPage.transform.Find("認知趨勢圖/折線圖")?.GetComponent<CognitiveTrendChartGraphic>();
+        statisticsDateLabels = new[]
+        {
+            statisticsPage.transform.Find("認知趨勢圖/日期_起點")?.GetComponent<TMP_Text>(),
+            statisticsPage.transform.Find("認知趨勢圖/日期_三分之一")?.GetComponent<TMP_Text>(),
+            statisticsPage.transform.Find("認知趨勢圖/日期_三分之二")?.GetComponent<TMP_Text>(),
+            statisticsPage.transform.Find("認知趨勢圖/日期_今天")?.GetComponent<TMP_Text>()
+        };
         statisticsAttentionScore = statisticsPage.transform.Find("注意力摘要/分數")?.GetComponent<TMP_Text>();
         statisticsSpeedScore = statisticsPage.transform.Find("速度摘要/分數")?.GetComponent<TMP_Text>();
         statisticsExecutiveScore = statisticsPage.transform.Find("執行摘要/分數")?.GetComponent<TMP_Text>();
         profileText = profilePage.transform.Find("個人資料內容/個人資料")?.GetComponent<TMP_Text>();
+        profileNameInput = profilePage.transform.Find("個人資料內容/名稱輸入")?.GetComponent<TMP_InputField>();
+        profileNameStatus = profilePage.transform.Find("個人資料內容/名稱狀態")?.GetComponent<TMP_Text>();
+        dailyLoginButtonText = profilePage.transform.Find("個人資料內容/每日登入/文字")?.GetComponent<TMP_Text>();
+        dailyLoginPopupMessage = dailyLoginPopup?.transform.Find("簽到卡片/說明")?.GetComponent<TMP_Text>();
+        dailyLoginClaimButton = dailyLoginPopup?.transform.Find("簽到卡片/領取")?.GetComponent<Button>();
+        dailyLoginClaimButtonText = dailyLoginClaimButton?.GetComponentInChildren<TMP_Text>();
         detailDomain = detailPage.transform.Find("分類標題")?.GetComponent<TMP_Text>();
         detailTitle = detailPage.transform.Find("遊戲標題")?.GetComponent<TMP_Text>();
         detailSummary = detailPage.transform.Find("遊戲資訊/測量內容")?.GetComponent<TMP_Text>();
@@ -493,6 +630,14 @@ public class CognitiveGameCatalogController : MonoBehaviour
         Button start = detailPage.transform.Find("開始")?.GetComponent<Button>();
         if (back != null) back.onClick.AddListener(() => ShowMainPage(catalogPage));
         if (start != null) start.onClick.AddListener(StartSelectedGame);
+
+        Button saveName = profilePage.transform.Find("個人資料內容/儲存名稱")?.GetComponent<Button>();
+        Button dailyLogin = profilePage.transform.Find("個人資料內容/每日登入")?.GetComponent<Button>();
+        Button closeDailyLogin = dailyLoginPopup?.transform.Find("簽到卡片/稍後再說")?.GetComponent<Button>();
+        if (saveName != null) saveName.onClick.AddListener(SavePlayerName);
+        if (dailyLogin != null) dailyLogin.onClick.AddListener(OpenDailyLoginPopup);
+        if (dailyLoginClaimButton != null) dailyLoginClaimButton.onClick.AddListener(ClaimDailyLoginReward);
+        if (closeDailyLogin != null) closeDailyLogin.onClick.AddListener(CloseDailyLoginPopup);
 
         Transform content = catalogPage.transform.Find("能力分類滑動區/Viewport/Content");
         if (content != null)
@@ -508,9 +653,14 @@ public class CognitiveGameCatalogController : MonoBehaviour
 
         Button gamesButton = bottomNavigation?.transform.Find("遊戲")?.GetComponent<Button>();
         Button statsButton = bottomNavigation?.transform.Find("統計")?.GetComponent<Button>();
+        Button shopButton = bottomNavigation?.transform.Find("商店")?.GetComponent<Button>();
         Button mineButton = bottomNavigation?.transform.Find("我的")?.GetComponent<Button>();
+        BindStatisticsRange(statisticsPage.transform.Find("認知趨勢圖/範圍_7天")?.GetComponent<Button>(), 7);
+        BindStatisticsRange(statisticsPage.transform.Find("認知趨勢圖/範圍_30天")?.GetComponent<Button>(), 30);
+        BindStatisticsRange(statisticsPage.transform.Find("認知趨勢圖/範圍_90天")?.GetComponent<Button>(), 90);
         if (gamesButton != null) gamesButton.onClick.AddListener(() => ShowMainPage(catalogPage));
         if (statsButton != null) statsButton.onClick.AddListener(() => ShowMainPage(statisticsPage));
+        if (shopButton != null) shopButton.onClick.AddListener(OpenShop);
         if (mineButton != null) mineButton.onClick.AddListener(() => ShowMainPage(profilePage));
         BindStatisticsFilter(statisticsPage.transform.Find("篩選_綜合")?.GetComponent<Button>(),
             ChartSelection.Composite);
@@ -521,6 +671,7 @@ public class CognitiveGameCatalogController : MonoBehaviour
         BindStatisticsFilter(statisticsPage.transform.Find("篩選_執行功能")?.GetComponent<Button>(),
             ChartSelection.Executive);
         RefreshUserData();
+        if (!HasClaimedDailyLoginToday()) OpenDailyLoginPopup();
     }
 
     private void ShowMainPage(GameObject page)
@@ -560,16 +711,95 @@ public class CognitiveGameCatalogController : MonoBehaviour
             SceneManager.LoadScene(selectedGame.sceneName);
     }
 
+    private void OpenShop()
+    {
+        SceneManager.LoadScene("shop");
+    }
+
+    private void SavePlayerName()
+    {
+        if (profileNameInput == null) return;
+        string newName = profileNameInput.text.Trim();
+        if (string.IsNullOrEmpty(newName))
+        {
+            profileNameStatus.text = "名稱不能留白";
+            profileNameStatus.color = new Color(0.78f, 0.27f, 0.22f);
+            return;
+        }
+
+        PlayerPrefs.SetString("SavedPlayerName", newName);
+        PlayerPrefs.SetString("AccountName", newName);
+        PlayerPrefs.Save();
+        profileNameInput.text = newName;
+        profileNameStatus.text = "名稱已儲存";
+        profileNameStatus.color = accentColor;
+        RefreshUserData();
+    }
+
+    private void OpenDailyLoginPopup()
+    {
+        if (dailyLoginPopup == null) return;
+        UpdateDailyLoginUI();
+        dailyLoginPopup.SetActive(true);
+        dailyLoginPopup.transform.SetAsLastSibling();
+    }
+
+    private void CloseDailyLoginPopup()
+    {
+        if (dailyLoginPopup != null) dailyLoginPopup.SetActive(false);
+    }
+
+    private void ClaimDailyLoginReward()
+    {
+        if (HasClaimedDailyLoginToday())
+        {
+            UpdateDailyLoginUI();
+            return;
+        }
+
+        CoinData.AddCoins(DailyLoginRewardCoins);
+        PlayerPrefs.SetString(LastDailyLoginKey, TodayKey());
+        PlayerPrefs.Save();
+        RefreshUserData();
+        UpdateDailyLoginUI();
+    }
+
+    private void UpdateDailyLoginUI()
+    {
+        bool claimed = HasClaimedDailyLoginToday();
+        if (dailyLoginButtonText != null)
+            dailyLoginButtonText.text = claimed ? "每日登入\n今日已領取" : "每日登入\n可領取 20 金幣";
+        if (dailyLoginPopupMessage != null)
+            dailyLoginPopupMessage.text = claimed
+                ? "今天的登入獎勵已經領取。\n明天再回來看看吧！"
+                : "歡迎回來！\n今天可領取 20 金幣。";
+        if (dailyLoginClaimButton != null) dailyLoginClaimButton.interactable = !claimed;
+        if (dailyLoginClaimButtonText != null)
+            dailyLoginClaimButtonText.text = claimed ? "今日已領取" : "領取 20 金幣";
+    }
+
+    private static bool HasClaimedDailyLoginToday()
+    {
+        return PlayerPrefs.GetString(LastDailyLoginKey, string.Empty) == TodayKey();
+    }
+
+    private static string TodayKey()
+    {
+        return DateTime.Now.ToString("yyyy-MM-dd");
+    }
+
     private void RefreshUserData()
     {
         if (headerName != null) headerName.text = GetPlayerName();
         if (headerCoins != null) headerCoins.text = CoinData.TotalCoins.ToString();
+        if (profileNameInput != null && !profileNameInput.isFocused) profileNameInput.text = GetPlayerName();
         CognitiveProfile profile = CognitiveAssessmentService.BuildProfile();
         SetScoreText(statisticsAttentionScore, profile, CognitiveDomain.AttentionInhibitoryControl);
         SetScoreText(statisticsSpeedScore, profile, CognitiveDomain.ProcessingSpeedVisualSearch);
         SetScoreText(statisticsExecutiveScore, profile, CognitiveDomain.ExecutiveFunctionNumericalReasoning);
         RefreshTrendChart();
         if (profileText != null) profileText.text = BuildProfileText();
+        UpdateDailyLoginUI();
     }
 
     private TMP_Text CreateScoreCard(Transform parent, string name, string label, Color accent, float minX,
@@ -610,39 +840,53 @@ public class CognitiveGameCatalogController : MonoBehaviour
         });
     }
 
-    private void RefreshTrendChart()
+private void RefreshTrendChart()
     {
         if (trendChart == null || statisticsChartLabel == null) return;
+
         string label;
         Color color;
+        CognitiveDomain? domain;
         switch (chartSelection)
         {
             case ChartSelection.Attention:
                 label = "注意力與抑制控制";
                 color = accentColor;
+                domain = CognitiveDomain.AttentionInhibitoryControl;
                 break;
             case ChartSelection.ProcessingSpeed:
                 label = "處理速度與視覺搜尋";
                 color = orangeColor;
+                domain = CognitiveDomain.ProcessingSpeedVisualSearch;
                 break;
             case ChartSelection.Executive:
-                label = "執行功能與數字操作";
+                label = "執行功能與數字推理";
                 color = new Color(0.49f, 0.48f, 0.72f);
+                domain = CognitiveDomain.ExecutiveFunctionNumericalReasoning;
                 break;
             default:
-                label = "綜合認知能力";
+                label = "綜合認知表現";
                 color = new Color(0.22f, 0.53f, 0.62f);
+                domain = null;
                 break;
         }
-        statisticsChartLabel.text = label + "　目前尚無 30 天資料";
-        trendChart.SetValues(new float[30], color);
+
+        float[] values = CognitiveAssessmentService.BuildDailyTrend(domain, statisticsRangeDays);
+        int recordedDays = values.Count(value => !float.IsNaN(value));
+        if (statisticsTitle != null)
+            statisticsTitle.text = "過去 " + statisticsRangeDays + " 天認知趨勢";
+        UpdateStatisticsDateLabels();
+        statisticsChartLabel.text = recordedDays == 0
+            ? label + "｜尚無有效紀錄"
+            : label + "｜共 " + recordedDays + " 天有有效紀錄";
+        trendChart.SetValues(values, color);
     }
 
-    private static void SetScoreText(TMP_Text target, CognitiveProfile profile, CognitiveDomain domain)
+private static void SetScoreText(TMP_Text target, CognitiveProfile profile, CognitiveDomain domain)
     {
         if (target == null) return;
         CognitiveDomainScore score = profile.domains.FirstOrDefault(item => item.domain == domain);
-        target.text = score == null ? "0" : score.score.ToString("F0") + " / 100";
+        target.text = score == null ? "尚無資料" : score.score.ToString("F0") + " / 100";
     }
 
     private static string DomainBadge(string domainTitle)
@@ -693,7 +937,7 @@ public class CognitiveGameCatalogController : MonoBehaviour
     private string BuildProfileText()
     {
         CognitiveProfile profile = CognitiveAssessmentService.BuildProfile();
-        return "玩家姓名　" + GetPlayerName() + "\n\n持有金幣　" + CoinData.TotalCoins +
+        return "持有金幣　" + CoinData.TotalCoins +
                "\n\n有效測驗紀錄　" + profile.domains.Sum(item => item.contributingSessions) +
                " 次\n\n資料用途　觀察自己的長期認知變化\n\n" + profile.disclaimer;
     }
@@ -756,6 +1000,49 @@ public class CognitiveGameCatalogController : MonoBehaviour
         return button;
     }
 
+    private Button CreateCircleButton(Transform parent, string name, Color color)
+    {
+        var buttonObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer),
+            typeof(DailyLoginCircleGraphic), typeof(Button));
+        buttonObject.transform.SetParent(parent, false);
+        DailyLoginCircleGraphic graphic = buttonObject.GetComponent<DailyLoginCircleGraphic>();
+        graphic.color = color;
+        Button button = buttonObject.GetComponent<Button>();
+        button.targetGraphic = graphic;
+        ColorBlock colors = button.colors;
+        colors.highlightedColor = Color.Lerp(color, Color.white, 0.18f);
+        colors.pressedColor = Color.Lerp(color, Color.black, 0.15f);
+        button.colors = colors;
+        return button;
+    }
+
+    private TMP_InputField CreateInputField(Transform parent, string name, string placeholder, string value)
+    {
+        var inputObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(TMP_InputField));
+        inputObject.transform.SetParent(parent, false);
+        Image background = inputObject.GetComponent<Image>();
+        background.color = new Color(0.95f, 0.94f, 0.89f, 1f);
+
+        TMP_Text placeholderText = CreateText(inputObject.transform, "提示文字", placeholder, 22,
+            FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
+        placeholderText.color = new Color(0.48f, 0.50f, 0.46f, 0.75f);
+        Stretch(placeholderText.rectTransform, 14f);
+
+        TMP_Text inputText = CreateText(inputObject.transform, "輸入文字", value, 24, FontStyles.Normal,
+            TextAlignmentOptions.MidlineLeft);
+        inputText.color = textColor;
+        Stretch(inputText.rectTransform, 14f);
+
+        TMP_InputField input = inputObject.GetComponent<TMP_InputField>();
+        input.textViewport = inputObject.GetComponent<RectTransform>();
+        input.textComponent = inputText;
+        input.placeholder = placeholderText;
+        input.text = value;
+        input.characterLimit = 20;
+        input.lineType = TMP_InputField.LineType.SingleLine;
+        return input;
+    }
+
     private static void SetRect(RectTransform rect, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin,
         Vector2 offsetMax)
     {
@@ -771,5 +1058,45 @@ public class CognitiveGameCatalogController : MonoBehaviour
         rect.anchorMax = Vector2.one;
         rect.offsetMin = new Vector2(margin, margin);
         rect.offsetMax = new Vector2(-margin, -margin);
+    }
+
+
+private TMP_Text CreateAxisLabel(Transform parent, string name, TextAlignmentOptions alignment,
+        float minX, float maxX)
+    {
+        TMP_Text label = CreateText(parent, name, string.Empty, 21, FontStyles.Bold, alignment);
+        label.color = new Color(0.38f, 0.42f, 0.38f);
+        SetRect(label.rectTransform, new Vector2(minX, 0.02f), new Vector2(maxX, 0.18f),
+            Vector2.zero, Vector2.zero);
+        return label;
+    }
+
+    private void CreateStatisticsRangeButton(Transform parent, int days, float minX, float maxX)
+    {
+        Button button = CreateButton(parent, "範圍_" + days + "天", days + " 天", mutedColor);
+        SetRect(button.GetComponent<RectTransform>(), new Vector2(minX, 0.84f), new Vector2(maxX, 0.97f),
+            Vector2.zero, Vector2.zero);
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>();
+        if (label != null) label.fontSize = 19;
+    }
+
+    private void BindStatisticsRange(Button button, int days)
+    {
+        if (button == null) return;
+        button.onClick.AddListener(() =>
+        {
+            statisticsRangeDays = days;
+            RefreshTrendChart();
+        });
+    }
+
+    private void UpdateStatisticsDateLabels()
+    {
+        if (statisticsDateLabels == null || statisticsDateLabels.Length < 4) return;
+        int maximumDaysAgo = Mathf.Max(1, statisticsRangeDays - 1);
+        statisticsDateLabels[0].text = maximumDaysAgo + " 天前";
+        statisticsDateLabels[1].text = Mathf.RoundToInt(maximumDaysAgo * 2f / 3f) + " 天前";
+        statisticsDateLabels[2].text = Mathf.RoundToInt(maximumDaysAgo / 3f) + " 天前";
+        statisticsDateLabels[3].text = "今天";
     }
 }

@@ -1,37 +1,24 @@
 # LTC Cognitive API
 
-這是 Unity 與 PostgreSQL 中間的後端。Unity 不直接持有資料庫密碼，只把每次遊戲的逐題紀錄與計算指標送到此 API。
+Unity 不直接連 PostgreSQL，而是透過此 API 登入、上傳評估與讀取趨勢。資料庫採 9 張必要實體表；登入工作階段改為 1 天效期的簽章 Token，不另建 Session 表。
 
-## 第一次設定
-
-在倉庫根目錄執行：
+## 啟動
 
 ```powershell
-dotnet user-secrets set "ConnectionStrings:LtcDatabase" "Host=localhost;Port=5432;Database=ltc_cognitive;Username=ltc_app;Password=你的ltc_app密碼" --project backend\LtcCognitive.Api\LtcCognitive.Api.csproj
-dotnet tool restore
-dotnet tool run dotnet-ef database update --project backend\LtcCognitive.Api\LtcCognitive.Api.csproj
-dotnet run --project backend\LtcCognitive.Api\LtcCognitive.Api.csproj --urls http://localhost:5077
+dotnet ef database update --project backend/LtcCognitive.Api/LtcCognitive.Api.csproj
+dotnet run --project backend/LtcCognitive.Api/LtcCognitive.Api.csproj --urls http://127.0.0.1:5077
 ```
 
-密碼會存放在 Windows 使用者的 Secret Manager，不會進入 Git。
+連線字串與簽章金鑰存於 .NET User Secrets，不放入 Git。
 
-## 目前 API
+## API
 
-- `GET /health`：確認後端與 PostgreSQL 都正常。
-- `POST /api/v1/participants/resolve`：建立或更新匿名受測者。
-- `POST /api/v1/assessments`：一次上傳完整測驗、逐題反應和計算指標；相同 Session ID 重送不會重複寫入。
-- `GET /api/v1/assessments/participants/{code}/history`：取得最近測驗。
-- `GET /api/v1/assessments/participants/{code}/trends?days=30`：取得圖表用趨勢資料。
+- `GET /health`：後端與資料庫健康檢查。
+- `POST /api/v2/auth/guest`：以安裝識別碼登入；日後可將 provider 改接 Google。
+- `GET /api/v2/auth/me`：讀取目前登入玩家。
+- `POST /api/v2/auth/logout`：本機登出；Token 最長 1 天後失效。
+- `POST /api/v1/assessments`：上傳一場遊戲評估。
+- `GET /api/v1/assessments/mine/history`：目前玩家的評估歷史。
+- `GET /api/v1/assessments/mine/trends?days=30`：目前玩家的認知趨勢。
 
-可直接用 `LtcCognitive.Api/LtcCognitive.Api.http` 測試範例資料。
-
-## 為何保留這些欄位
-
-- `taskVersion`：遊戲規則或難度修改後仍可區分資料。
-- `schemaVersion`：Unity 上傳格式可逐步升級。
-- `calculationVersion`：評分公式更新後不會把新舊分數誤當同一尺度。
-- `device`：保留螢幕、DPI、平台，未來可研究裝置差異，而不是直接假設所有裝置相同。
-- `trials`：保留每一題正誤、反應時間與刺激條件，日後能重新計算指標和做效度分析。
-- `qualityFlag`：排除中途離開、反應過快或資料不完整的測驗。
-
-此系統目前定位為研究／健康促進原型，不是醫療診斷工具。正式對外服務前仍需加入身分驗證、HTTPS、備份與個資同意流程。
+完整表格與欄位翻譯見 [9-table-data-dictionary.md](../docs/database/9-table-data-dictionary.md)。

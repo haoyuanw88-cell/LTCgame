@@ -59,7 +59,11 @@ namespace LTCCognitiveAssessment
     public class CognitiveGameResult
     {
         public string gameId;
+        public string protocolId;
+        public string protocolVersion;
+        public string scoringVersion;
         public CognitiveDomain primaryDomain;
+        public int practiceTrialCount;
         public int trialCount;
         public int validResponseCount;
         public int excludedResponseCount;
@@ -77,19 +81,26 @@ namespace LTCCognitiveAssessment
         public float difficultyReached;
         public float performanceScore;
         public bool dataQualityPassed;
+        public bool eligibleForTrend;
+        public string interpretationLevel;
+        public string normReferenceStatus = "not_available";
         public string dataQualityNote;
         public List<string> qualityFlags = new List<string>();
+        public List<string> interpretationWarnings = new List<string>();
         public List<CognitiveMetric> metrics = new List<CognitiveMetric>();
     }
 
     [Serializable]
     public class CognitiveAssessmentSession
     {
-        public string schemaVersion = "2.0";
+        public string schemaVersion = "3.0";
         public string sessionId;
         public string anonymousUserId;
         public string gameId;
         public string taskVersion;
+        public string protocolId;
+        public string protocolVersion;
+        public string scoringVersion;
         public string appVersion;
         public string deviceModel;
         public string operatingSystem;

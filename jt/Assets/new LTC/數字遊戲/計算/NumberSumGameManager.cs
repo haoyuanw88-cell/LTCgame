@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using LTCCognitiveAssessment;
 
 public class NumberSumGameManager : MonoBehaviour
@@ -84,9 +85,14 @@ public class NumberSumGameManager : MonoBehaviour
 
     public void StartGame()
     {
+        if (!Mathf.Approximately(gameTime, 60f))
+        {
+            Debug.LogWarning("評估協定 3.0 固定正式測驗為 60 秒，已覆寫 Inspector 設定。");
+            gameTime = 60f;
+        }
         randomSeed = Random.Range(int.MinValue, int.MaxValue);
         Random.InitState(randomSeed);
-        assessmentSessionId = CognitiveAssessmentService.BeginGame("number_sum", "2.0.0");
+        assessmentSessionId = CognitiveAssessmentService.BeginGame("number_sum", CognitiveProtocolRegistry.ProtocolVersion);
         trialIndex = 0;
         score = 0;
         round = 1;
@@ -95,6 +101,7 @@ public class NumberSumGameManager : MonoBehaviour
         earnedCoins = 0;
         timeLeft = gameTime;
         isGameRunning = true;
+        BindResultReturnButton();
 
         if (resultPanel != null)
         {
@@ -105,6 +112,27 @@ public class NumberSumGameManager : MonoBehaviour
         UpdateUI();
         trialStartTime = Time.time;
     }
+
+private void BindResultReturnButton()
+    {
+        if (resultPanel == null) return;
+        Button returnButton = resultPanel.GetComponentInChildren<Button>(true);
+        if (returnButton == null)
+        {
+            Debug.LogWarning("結算頁找不到返回主頁按鈕。");
+            return;
+        }
+        returnButton.onClick.RemoveAllListeners();
+        returnButton.onClick.AddListener(ReturnToMainMenu);
+        TMP_Text label = returnButton.GetComponentInChildren<TMP_Text>(true);
+        if (label != null) label.text = "返回主頁";
+    }
+
+    public void ReturnToMainMenu()
+    {
+        SceneManager.LoadScene("GameScene");
+    }
+
 
     void SpawnRound()
     {
