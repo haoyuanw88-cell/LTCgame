@@ -96,6 +96,50 @@ public class CognitiveGameCatalogController : MonoBehaviour
             domainSummary = "結合視覺注意、反應速度與手眼協調",
             summary = "追蹤目標並完成指定動作。", instructions = "此遊戲正在開發中。",
             domain = CognitiveDomain.ProcessingSpeedVisualSearch, available = false, experimental = true
+        },
+        new GameDefinition
+        {
+            title = "翻牌記憶",
+            domainTitle = "視覺工作記憶",
+            domainSummary = "短時間記住卡牌位置，並找出相同配對。",
+            summary = "觀察並記住卡牌位置，測量配對正確率、錯誤次數與完成時間。",
+            instructions = "依序翻開兩張卡牌；圖案相同即可完成配對，直到所有卡牌都配對完成。",
+            sceneName = "CardsGame",
+            domain = CognitiveDomain.WorkingMemory,
+            experimental = true
+        },
+        new GameDefinition
+        {
+            title = "旋轉接水管",
+            domainTitle = "視空間規劃",
+            domainSummary = "理解圖形方向與連接關係，規劃正確路徑。",
+            summary = "旋轉水管並建立完整通路，觀察空間推理、規劃效率與錯誤操作。",
+            instructions = "點擊水管進行旋轉，讓起點與終點形成一條完整且不中斷的路徑。",
+            sceneName = "PipeGame",
+            domain = CognitiveDomain.VisuospatialAbility,
+            experimental = true
+        },
+        new GameDefinition
+        {
+            title = "超市採購",
+            domainTitle = "工作記憶與執行功能",
+            domainSummary = "記住購物目標，搜尋商品並依需求完成任務。",
+            summary = "依購物清單尋找正確商品，觀察目標維持、視覺搜尋與錯誤選擇。",
+            instructions = "先查看購物需求，再到貨架選擇指定商品並完成結帳。",
+            sceneName = "SupermarketGame",
+            domain = CognitiveDomain.WorkingMemory,
+            experimental = true
+        },
+        new GameDefinition
+        {
+            title = "文字判斷",
+            domainTitle = "語言理解",
+            domainSummary = "閱讀題目、理解語意並判斷敘述是否正確。",
+            summary = "透過生活化敘述題，觀察閱讀理解、語意判斷與作答正確率。",
+            instructions = "閱讀畫面上的敘述後，選擇正確或錯誤；作答後會進入下一題。",
+            sceneName = "TextPuzzleGame",
+            domain = CognitiveDomain.Language,
+            experimental = true
         }
     };
 
@@ -168,14 +212,27 @@ public class CognitiveGameCatalogController : MonoBehaviour
 
         // Keep editor-authored scenes in sync when the navigation structure evolves.
         Transform navigation = existingCanvas.Find("底部導覽");
+        bool hasIntegratedGames = existingCanvas.GetComponentsInChildren<Button>(true)
+            .Any(button => button.name == "遊戲_翻牌記憶");
         bool interfaceIsCurrent = navigation != null &&
                                   navigation.Find("商店") != null &&
                                   navigation.Find("寵物") != null &&
                                   existingCanvas.Find("我的頁/個人資料內容/名稱輸入") != null &&
-                                  existingCanvas.Find("每日登入彈窗") != null;
-        if (!interfaceIsCurrent && !Application.isPlaying)
+                                  existingCanvas.Find("每日登入彈窗") != null &&
+                                  hasIntegratedGames;
+        if (!interfaceIsCurrent)
         {
-            DestroyImmediate(existingCanvas.gameObject);
+            if (Application.isPlaying)
+            {
+                existingCanvas.name = CanvasName + " (舊版)";
+                existingCanvas.gameObject.SetActive(false);
+                Destroy(existingCanvas.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(existingCanvas.gameObject);
+            }
+
             BuildInterface();
         }
     }
