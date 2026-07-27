@@ -1,5 +1,8 @@
 {
     "servers": {
+        "encore-cloud": {
+            "url": "https://api.encore.dev/mcp"
+        },
         "encore-local": {
             "args": [
                 "mcp",
