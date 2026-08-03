@@ -15,8 +15,9 @@ public static class CognitiveScoringScientificValidityChecks
             VerifyPracticeTrialsAreExcluded();
             VerifyUnbalancedConditionsAreRejected();
             VerifyPoorRoundPerformanceCanRemainValid();
+            VerifyPaperAlignedPrimaryOutcomes();
             VerifyLegacyHistoryRemainsVisible();
-            Debug.Log("[CognitiveValidity] 協定 3.0 與歷史顯示規則自動檢查通過（5/5）。");
+            Debug.Log("[CognitiveValidity] 協定 4.0、論文式主要指標與歷史顯示規則自動檢查通過（6/6）。");
         }
         catch (Exception exception)
         {
@@ -98,6 +99,40 @@ public static class CognitiveScoringScientificValidityChecks
             new List<CognitiveAssessmentSession> { legacy });
         Require(profile.domains.Count == 1 && Mathf.Approximately(profile.domains[0].score, 83f),
             "既有舊版完成紀錄應繼續顯示於統計頁");
+    }
+
+    static void VerifyPaperAlignedPrimaryOutcomes()
+    {
+        var stroop = CreateSession("stroop_color_match");
+        for (int index = 0; index < 12; index++)
+        {
+            var trial = Response(index + 1, index % 2 == 0 ? "match_low_conflict" : "mismatch_high_conflict",
+                TrialOutcome.Correct);
+            trial.reactionTimeMs = index % 2 == 0 ? 600 : 900;
+            stroop.trials.Add(trial);
+        }
+        var stroopResult = CognitiveScoring.BuildGameResult(stroop,
+            CognitiveDomain.AttentionInhibitoryControl, 0f, 1f);
+        Require(stroopResult.primaryOutcomeCode == "stroop_rt_interference" &&
+                Mathf.Approximately(stroopResult.primaryOutcome, 300f), "Stroop干擾差公式錯誤");
+
+        var planning = CreateSession("number_sum");
+        for (int index = 0; index < 3; index++)
+        {
+            var trial = Response(index + 1, "target_sum", TrialOutcome.Correct);
+            trial.eventKind = "round_summary";
+            trial.reactionTimeMs = 3000;
+            trial.roundElapsedMs = 3000;
+            trial.minimumActionCount = 2;
+            trial.actionCount = index == 2 ? 3 : 2;
+            trial.errorCount = 0;
+            trial.initialPlanningTimeMs = 800;
+            planning.trials.Add(trial);
+        }
+        var planningResult = CognitiveScoring.BuildGameResult(planning,
+            CognitiveDomain.ExecutiveFunctionNumericalReasoning, 0f, 3f);
+        Require(planningResult.primaryOutcomeCode == "planning_optimal_solution_rate" &&
+                Mathf.Abs(planningResult.primaryOutcome - 66.6667f) < .01f, "規劃最佳解率公式錯誤");
     }
 
     static CognitiveAssessmentSession CreateSession(string gameId)

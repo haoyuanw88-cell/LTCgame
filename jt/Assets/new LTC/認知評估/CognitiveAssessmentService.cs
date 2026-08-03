@@ -69,8 +69,8 @@ namespace LTCCognitiveAssessment
 
     public static class CognitiveProtocolRegistry
     {
-        public const string ProtocolVersion = "3.0.0";
-        public const string ScoringVersion = "3.0.0";
+        public const string ProtocolVersion = "4.0.0";
+        public const string ScoringVersion = "4.0.0";
 
         static readonly Dictionary<string, CognitiveAssessmentProtocol> Protocols =
             new Dictionary<string, CognitiveAssessmentProtocol>(StringComparer.Ordinal)
@@ -342,10 +342,11 @@ namespace LTCCognitiveAssessment
                 AddMetric(result, "inverse_efficiency", result.inverseEfficiencyMs, "ms", "反應時間除以正確率，越低越好");
 
             if (session.gameId == "stroop_color_match") AddInterferenceMetrics(result, valid, suppliedEffect);
-            if (session.gameId == "number_order") AddRoundMetrics(result, all, "search");
-            if (session.gameId == "number_sum") AddRoundMetrics(result, all, "planning");
+            if (session.gameId == "number_order") AddTrailMakingMetrics(result, all);
+            if (session.gameId == "number_sum") AddPlanningMetrics(result, all);
 
             ApplyQualityRules(session, protocol, responses, valid, result);
+            // 0-100 僅供遊戲介面呈現完成/正確比例；論文對應的主要結果保存在 primaryOutcome。
             float taskIndex = roundScored ? result.completionRate * 100f : (valid.Count > 0 ? correct * 100f / valid.Count : 0f);
             result.performanceScore = Mathf.Round(taskIndex * 10f) / 10f;
             AddMetric(result, "task_performance_index", result.performanceScore, "score_0_100",
@@ -417,42 +418,65 @@ namespace LTCCognitiveAssessment
             result.conditionEffectRatio = lowMedian > 0 ? highMedian / lowMedian : 0f;
             float lowAccuracy = AnsweredAccuracy(lowAll);
             float highAccuracy = AnsweredAccuracy(highAll);
+            float lowErrorRate = 1f - lowAccuracy;
+            float highErrorRate = 1f - highAccuracy;
+
+            result.primaryOutcomeCode = "stroop_rt_interference";
+            result.primaryOutcome = result.conditionEffectMs;
+            result.primaryOutcomeUnit = "ms";
 
             AddMetric(result, "low_interference_median_rt", lowMedian, "ms", "低干擾條件正確反應時間中位數");
             AddMetric(result, "high_interference_median_rt", highMedian, "ms", "高干擾條件正確反應時間中位數");
-            AddMetric(result, "interference_cost", result.conditionEffectMs, "ms", "高干擾減低干擾的反應時間差");
+            AddMetric(result, "stroop_rt_interference", result.conditionEffectMs, "ms", "Stroop主要結果：高干擾減低干擾之正確反應時間差，越小代表干擾較低");
             AddMetric(result, "interference_ratio", result.conditionEffectRatio, "ratio", "高干擾與低干擾反應時間比值");
-            AddMetric(result, "interference_accuracy_cost", (lowAccuracy - highAccuracy) * 100f, "percentage_point",
-                "低干擾正確率減高干擾正確率");
+            AddMetric(result, "stroop_error_interference", (highErrorRate - lowErrorRate) * 100f, "percentage_point",
+                "高干擾錯誤率減低干擾錯誤率，越小代表干擾較低");
         }
 
-        static void AddRoundMetrics(CognitiveGameResult result, List<CognitiveTrialRecord> all, string prefix)
+        static void AddTrailMakingMetrics(CognitiveGameResult result, List<CognitiveTrialRecord> all)
         {
             var formal = all.Where(trial => !trial.isPractice).ToList();
             var rounds = formal.Where(trial => trial.eventKind == "round_summary" && string.IsNullOrEmpty(trial.exclusionReason)).ToList();
             int completed = rounds.Count(trial => trial.outcome == TrialOutcome.Correct);
             result.completionRate = rounds.Count > 0 ? (float)completed / rounds.Count : 0f;
-            var durations = rounds.Where(trial => trial.outcome == TrialOutcome.Correct && trial.roundElapsedMs > 0)
-                .Select(trial => (float)trial.roundElapsedMs).OrderBy(value => value).ToList();
-            var actions = formal.Where(trial => (trial.eventKind == "response" || trial.eventKind == "selection") &&
-                                                trial.reactionTimeMs >= 150 && trial.reactionTimeMs <= 10000)
-                .Select(trial => (float)trial.reactionTimeMs).OrderBy(value => value).ToList();
+            float totalCompletionMs = rounds.Where(trial => trial.outcome == TrialOutcome.Correct)
+                .Sum(trial => (float)Math.Max(0, trial.roundElapsedMs));
+            int sequenceErrors = formal.Count(trial => trial.eventKind == "response" && trial.errorType == "sequence_error");
+            result.primaryOutcomeCode = "trail_total_completion_time";
+            result.primaryOutcome = totalCompletionMs;
+            result.primaryOutcomeUnit = "ms";
+            AddMetric(result, "trail_total_completion_time", totalCompletionMs, "ms", "類TMT-A主要結果：所有完成路徑的總完成時間，越短越好");
+            AddMetric(result, "trail_sequence_error_count", sequenceErrors, "count", "順序追蹤錯誤次數；錯誤後需修正並繼續計時");
+            AddMetric(result, "trail_completed_round_count", completed, "count", "完成的數字路徑數");
+            AddMetric(result, "trail_round_completion_rate", result.completionRate * 100f, "percent", "完成路徑比例");
+        }
 
-            AddMetric(result, prefix + "_attempted_round_count", rounds.Count, "count", "正式測驗嘗試回合數");
-            AddMetric(result, prefix + "_completed_round_count", completed, "count", "正式測驗完成回合數");
-            AddMetric(result, prefix + "_round_completion_rate", result.completionRate * 100f, "percent", "完成回合比例");
-            AddMetric(result, prefix + "_median_round_time", Median(durations), "ms", "完成回合時間中位數");
-            AddMetric(result, prefix + "_median_action_time", Median(actions), "ms", "回合內操作反應時間中位數");
+        static void AddPlanningMetrics(CognitiveGameResult result, List<CognitiveTrialRecord> all)
+        {
+            var formal = all.Where(trial => !trial.isPractice).ToList();
+            var rounds = formal.Where(trial => trial.eventKind == "round_summary" && string.IsNullOrEmpty(trial.exclusionReason)).ToList();
+            var completedRounds = rounds.Where(trial => trial.outcome == TrialOutcome.Correct).ToList();
+            result.completionRate = rounds.Count > 0 ? completedRounds.Count / (float)rounds.Count : 0f;
+            int optimal = completedRounds.Count(trial => trial.minimumActionCount > 0 &&
+                trial.actionCount == trial.minimumActionCount && trial.errorCount == 0);
+            float optimalRate = completedRounds.Count > 0 ? optimal * 100f / completedRounds.Count : 0f;
+            var excessMoves = completedRounds.Where(trial => trial.minimumActionCount > 0)
+                .Select(trial => (float)Math.Max(0, trial.actionCount - trial.minimumActionCount)).OrderBy(x => x).ToList();
+            var thinkingTimes = completedRounds.Where(trial => trial.initialPlanningTimeMs > 0)
+                .Select(trial => (float)trial.initialPlanningTimeMs).OrderBy(x => x).ToList();
+            var executionTimes = completedRounds.Where(trial => trial.roundElapsedMs >= trial.initialPlanningTimeMs)
+                .Select(trial => (float)(trial.roundElapsedMs - trial.initialPlanningTimeMs)).OrderBy(x => x).ToList();
+            int violations = formal.Count(trial => trial.eventKind == "selection" && trial.outcome == TrialOutcome.Incorrect);
 
-            if (prefix == "planning")
-            {
-                var selections = formal.Where(trial => trial.eventKind == "selection").ToList();
-                int invalid = selections.Count(trial => trial.outcome == TrialOutcome.Incorrect);
-                AddMetric(result, "planning_invalid_action_rate",
-                    selections.Count > 0 ? invalid * 100f / selections.Count : 0f, "percent", "造成超過目標的無效操作比例");
-                AddMetric(result, "planning_actions_per_completed_round",
-                    completed > 0 ? selections.Count / (float)completed : 0f, "ratio", "每個完成回合所需操作數");
-            }
+            result.primaryOutcomeCode = "planning_optimal_solution_rate";
+            result.primaryOutcome = optimalRate;
+            result.primaryOutcomeUnit = "percent";
+            AddMetric(result, "planning_optimal_solution_rate", optimalRate, "percent", "類Tower of London主要結果：以最少操作且無超額錯誤完成的回合比例，越高越好");
+            AddMetric(result, "planning_median_excess_moves", Median(excessMoves), "count", "實際操作數減理論最少操作數的中位數，越低越好");
+            AddMetric(result, "planning_median_initial_thinking_time", Median(thinkingTimes), "ms", "出題至首次操作的中位時間");
+            AddMetric(result, "planning_median_execution_time", Median(executionTimes), "ms", "首次操作後至完成的中位時間");
+            AddMetric(result, "planning_rule_violation_count", violations, "count", "造成總和超過目標的操作次數");
+            AddMetric(result, "planning_round_completion_rate", result.completionRate * 100f, "percent", "完成目標組合的回合比例");
         }
 
         static float AnsweredAccuracy(List<CognitiveTrialRecord> trials)

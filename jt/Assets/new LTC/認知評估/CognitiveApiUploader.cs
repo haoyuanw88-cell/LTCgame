@@ -185,7 +185,11 @@ void OnDestroy()
                         isPractice = trial.isPractice,
                         timedOut = trial.timedOut,
                         frameRate = trial.frameRate,
-                        inputMethod = trial.inputMethod
+                        inputMethod = trial.inputMethod,
+                        initialPlanningTimeMs = ClampToInt(trial.initialPlanningTimeMs),
+                        minimumActionCount = trial.minimumActionCount,
+                        actionCount = trial.actionCount,
+                        errorCount = trial.errorCount
                     }),
                     expectedResponse = trial.expectedAnswer,
                     actualResponse = trial.userAnswer,
@@ -246,6 +250,7 @@ void OnDestroy()
             public int roundIndex; public int stepIndex; public int randomSeed;
             public string eventKind; public string outcome; public string errorType; public string exclusionReason;
             public bool isPractice; public bool timedOut; public float frameRate; public string inputMethod;
+            public int initialPlanningTimeMs; public int minimumActionCount; public int actionCount; public int errorCount;
         }
         [Serializable] sealed class TrialRequest
         {

@@ -18,6 +18,21 @@ public static class CognitiveResultLayoutBaker
         Debug.Log("三個遊戲的結算畫面已整理完成。");
     }
 
+    [MenuItem("Tools/LTC/重建認知首頁與首次引導")]
+    public static void BakeCatalogAndOnboarding()
+    {
+        const string scenePath = "Assets/new LTC/場景轉換/GameScene.unity";
+        var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+        var controller = Object.FindAnyObjectByType<CognitiveGameCatalogController>(FindObjectsInactive.Include);
+        if (controller == null) throw new MissingReferenceException(scenePath + " 找不到認知首頁控制器");
+        controller.RebuildInterfaceForEditor();
+        EditorUtility.SetDirty(controller);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+        Debug.Log("認知首頁與首次登入 NPC 已重建並保存到場景。");
+    }
+
     static void Bake<T>(string scenePath) where T : MonoBehaviour
     {
         var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);

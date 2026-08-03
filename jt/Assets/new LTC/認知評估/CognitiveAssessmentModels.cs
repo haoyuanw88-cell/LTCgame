@@ -37,6 +37,10 @@ namespace LTCCognitiveAssessment
         public TrialOutcome outcome;
         public long reactionTimeMs;
         public long roundElapsedMs;
+        public long initialPlanningTimeMs;
+        public int minimumActionCount;
+        public int actionCount;
+        public int errorCount;
         public long occurredAtUnixMs;
         public string errorType;
         public string exclusionReason;
@@ -78,6 +82,9 @@ namespace LTCCognitiveAssessment
         public float conditionEffectMs;
         public float conditionEffectRatio;
         public float completionRate;
+        public float primaryOutcome;
+        public string primaryOutcomeCode;
+        public string primaryOutcomeUnit;
         public float difficultyReached;
         public float performanceScore;
         public bool dataQualityPassed;

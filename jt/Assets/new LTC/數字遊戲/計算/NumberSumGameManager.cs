@@ -60,6 +60,8 @@ public class NumberSumGameManager : MonoBehaviour
     private float roundStartTime;
     private int roundActionCount;
     private int roundResetCount;
+    private int minimumActionCount;
+    private long initialPlanningTimeMs;
     private int trialIndex;
 
     void Start()
@@ -145,12 +147,14 @@ private void BindResultReturnButton()
         currentSum = 0;
         roundActionCount = 0;
         roundResetCount = 0;
+        initialPlanningTimeMs = 0;
         roundStartTime = Time.time;
 
         int buttonCount = Random.Range(minButtonCount, maxButtonCount + 1);
         buttonCount = Mathf.Clamp(buttonCount, 3, numberButtons.Count);
 
         List<int> activeNumbers = GenerateValidNumberSet(buttonCount);
+        minimumActionCount = FindMinimumSubsetSize(activeNumbers, targetNumber);
 
         List<Button> availableButtons = new List<Button>(numberButtons);
 
@@ -271,6 +275,8 @@ private void BindResultReturnButton()
 
         int number = buttonNumbers[button];
         roundActionCount++;
+        if (roundActionCount == 1)
+            initialPlanningTimeMs = Mathf.RoundToInt((Time.time - roundStartTime) * 1000f);
         int sumBeforeInput = currentSum;
 
         if (selectedButtons.Contains(button))
@@ -385,8 +391,29 @@ private void BindResultReturnButton()
             stimulus=string.Join(",",buttonNumbers.Values)+"|target="+targetNumber+"|actions="+roundActionCount+"|resets="+roundResetCount,
             expectedAnswer=targetNumber.ToString(), userAnswer=currentSum.ToString(), outcome=outcome,
             reactionTimeMs=Mathf.RoundToInt((Time.time-roundStartTime)*1000f), roundElapsedMs=Mathf.RoundToInt((Time.time-roundStartTime)*1000f),
+            initialPlanningTimeMs=initialPlanningTimeMs, minimumActionCount=minimumActionCount,
+            actionCount=roundActionCount, errorCount=roundResetCount,
             timedOut=outcome==TrialOutcome.Omitted, errorType=error
         });
+    }
+
+    static int FindMinimumSubsetSize(List<int> numbers, int target)
+    {
+        int best = int.MaxValue;
+        int combinations = 1 << numbers.Count;
+        for (int mask = 1; mask < combinations; mask++)
+        {
+            int sum = 0;
+            int count = 0;
+            for (int index = 0; index < numbers.Count; index++)
+            {
+                if ((mask & (1 << index)) == 0) continue;
+                sum += numbers[index];
+                count++;
+            }
+            if (sum == target && count < best) best = count;
+        }
+        return best == int.MaxValue ? 0 : best;
     }
 
     void HideAllButtons()

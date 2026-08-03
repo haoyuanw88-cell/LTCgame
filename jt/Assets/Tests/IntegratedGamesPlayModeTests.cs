@@ -48,6 +48,20 @@ namespace LTC.Tests
             yield return LoadAndValidate("TextPuzzleGame", "SeniorTrueFalseQuiz");
         }
 
+        [UnityTest]
+        public IEnumerator GameScene_FirstTimeOnboardingIsAvailable()
+        {
+            SceneManager.LoadScene("GameScene", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+            var onboarding = GameObject.Find("首次引導");
+            Assert.That(onboarding, Is.Not.Null, "GameScene 找不到首次登入 NPC 介面。");
+            Assert.That(onboarding.activeInHierarchy, Is.True, "測試開關開啟時，首次登入 NPC 應顯示。");
+            Assert.That(onboarding.transform.Find("引導卡片/生日輸入"), Is.Not.Null);
+            Assert.That(onboarding.transform.Find("引導卡片/性別選擇"), Is.Not.Null);
+            Assert.That(onboarding.transform.Find("引導卡片/教育程度選擇"), Is.Not.Null);
+        }
+
         private IEnumerator LoadAndValidate(string sceneName, string requiredController)
         {
             SceneManager.LoadScene(sceneName, LoadSceneMode.Single);

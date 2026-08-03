@@ -279,7 +279,6 @@ private void BindResultReturnButton()
         }
         else
         {
-            RecordRoundSummary(TrialOutcome.Incorrect, "sequence_error");
             score -= wrongPenalty;
             wrongClickCount++;
 
@@ -288,7 +287,7 @@ private void BindResultReturnButton()
                 score = 0;
             }
 
-            StartCoroutine(ShowWrongThenNextRound());
+            StartCoroutine(ShowWrongThenContinueRound());
         }
 
         UpdateUI();
@@ -307,7 +306,7 @@ private void BindResultReturnButton()
         });
     }
 
-    IEnumerator ShowWrongThenNextRound()
+    IEnumerator ShowWrongThenContinueRound()
     {
         isShowingWrong = true;
 
@@ -325,8 +324,8 @@ private void BindResultReturnButton()
             wrongImage.SetActive(false);
         }
 
-        round++;
-        SpawnRound();
+        SetRoundButtonsInteractable(true);
+        trialStartTime = Time.time;
 
         isShowingWrong = false;
     }
