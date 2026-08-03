@@ -17,6 +17,7 @@ public class NumberOrderPoolGameManager : MonoBehaviour
     [Header("UI")]
     public TMP_Text scoreText;
     public TMP_Text timerText;
+    public TMP_Text difficultyText;
     public GameObject resultPanel;
     public TMP_Text resultTitleText;
     public TMP_Text resultSummaryText;
@@ -42,7 +43,11 @@ public class NumberOrderPoolGameManager : MonoBehaviour
     public int positiveMin = 1;
     public int positiveMax = 30;
     public int negativeMin = -20;
-    public int negativeStartRound = 4;
+    public int negativeStartRound = 5;
+
+    [Header("漸進難度（長者友善）")]
+    [Tooltip("每隔幾關才增加一個數字，避免難度跳升過快。")]
+    public int roundsPerNumberIncrease = 2;
 
     private float timeLeft;
     private int score = 0;
@@ -156,7 +161,7 @@ private void BindResultReturnButton()
         sortedNumbers.Clear();
         currentTargetIndex = 0;
 
-        int numberCount = Mathf.Min(startNumberCount + (round - 1), maxNumberCount);
+        int numberCount = GetNumberCountForRound(round);
         numberCount = Mathf.Min(numberCount, numberButtons.Count);
 
         List<Button> availableButtons = new List<Button>(numberButtons);
@@ -225,7 +230,14 @@ private void BindResultReturnButton()
         if (text != null)
         {
             text.text = number.ToString();
+            // 白字加深色描邊，在深色、淺色或花紋按鈕上都保持清楚。
+            text.color = Color.white;
+            text.fontStyle = FontStyles.Bold;
+            text.outlineColor = new Color32(28, 42, 54, 255);
+            text.outlineWidth = 0.25f;
         }
+
+        button.navigation = new Navigation { mode = Navigation.Mode.None };
 
         button.onClick.RemoveAllListeners();
         button.onClick.AddListener(() =>
@@ -291,6 +303,12 @@ private void BindResultReturnButton()
         }
 
         UpdateUI();
+    }
+
+    int GetNumberCountForRound(int roundNumber)
+    {
+        int increaseEvery = Mathf.Max(1, roundsPerNumberIncrease);
+        return Mathf.Min(startNumberCount + (Mathf.Max(1, roundNumber) - 1) / increaseEvery, maxNumberCount);
     }
 
     void RecordRoundSummary(TrialOutcome outcome, string error)
@@ -363,6 +381,12 @@ private void BindResultReturnButton()
         {
             timerText.text = "時間：" + Mathf.CeilToInt(timeLeft);
         }
+
+        if (difficultyText != null)
+        {
+            int count = GetNumberCountForRound(round);
+            difficultyText.text = "第 " + round + " 關｜" + count + " 個數字｜請由小到大點選";
+        }
     }
 
     void EndGame()
@@ -381,7 +405,7 @@ private void BindResultReturnButton()
             assessmentSessionId,
             CognitiveDomain.ProcessingSpeedVisualSearch,
             0f,
-            Mathf.Min(startNumberCount + completedRounds, maxNumberCount));
+            GetNumberCountForRound(Mathf.Max(1, round)));
         earnedCoins = correctClickCount * coinPerCorrectClick + completedRounds * coinPerCompletedRound;
 
         CoinData.AddCoins(earnedCoins);

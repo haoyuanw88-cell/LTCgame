@@ -18,6 +18,7 @@ public class NumberSumGameManager : MonoBehaviour
     public TMP_Text scoreText;
     public TMP_Text timerText;
     public TMP_Text targetText;
+    public TMP_Text difficultyText;
     public GameObject resultPanel;
     public TMP_Text resultTitleText;
     public TMP_Text resultSummaryText;
@@ -39,6 +40,12 @@ public class NumberSumGameManager : MonoBehaviour
     public int minNumber = 1;
     public int maxNumber = 9;
 
+    [Header("漸進難度（長者友善）")]
+    [Tooltip("前幾關固定為 3 個按鈕、2 個加數，先讓玩家熟悉操作。")]
+    public int familiarizationRounds = 2;
+    [Tooltip("從此關開始提高到 5 個按鈕及 3～4 個加數。")]
+    public int advancedStartRound = 6;
+
     private float timeLeft;
     private int score = 0;
     private int round = 1;
@@ -51,7 +58,9 @@ public class NumberSumGameManager : MonoBehaviour
     private readonly List<Button> activeButtons = new List<Button>();
     private readonly Dictionary<Button, int> buttonNumbers = new Dictionary<Button, int>();
     private readonly Dictionary<Button, Sprite> originalSprites = new Dictionary<Button, Sprite>();
+    private readonly Dictionary<Button, Color> originalColors = new Dictionary<Button, Color>();
     private readonly HashSet<Button> selectedButtons = new HashSet<Button>();
+    private readonly List<Button> selectionOrder = new List<Button>();
 
     private bool isGameRunning = false;
     private string assessmentSessionId;
@@ -143,34 +152,52 @@ private void BindResultReturnButton()
         activeButtons.Clear();
         buttonNumbers.Clear();
         originalSprites.Clear();
+        originalColors.Clear();
         selectedButtons.Clear();
+        selectionOrder.Clear();
         currentSum = 0;
         roundActionCount = 0;
         roundResetCount = 0;
         initialPlanningTimeMs = 0;
         roundStartTime = Time.time;
 
-        int buttonCount = Random.Range(minButtonCount, maxButtonCount + 1);
-        buttonCount = Mathf.Clamp(buttonCount, 3, numberButtons.Count);
+        GetRoundDifficulty(out int buttonCount, out int requiredAddends);
 
-        List<int> activeNumbers = GenerateValidNumberSet(buttonCount);
+        List<int> activeNumbers = GenerateValidNumberSet(buttonCount, requiredAddends);
         minimumActionCount = FindMinimumSubsetSize(activeNumbers, targetNumber);
-
-        List<Button> availableButtons = new List<Button>(numberButtons);
 
         for (int i = 0; i < buttonCount; i++)
         {
-            int randomIndex = Random.Range(0, availableButtons.Count);
-            Button button = availableButtons[randomIndex];
-            availableButtons.RemoveAt(randomIndex);
-
-            SetupButton(button, activeNumbers[i]);
+            SetupButton(numberButtons[i], activeNumbers[i]);
         }
 
         UpdateUI();
     }
 
-    List<int> GenerateValidNumberSet(int buttonCount)
+    void GetRoundDifficulty(out int buttonCount, out int requiredAddends)
+    {
+        if (round <= Mathf.Max(1, familiarizationRounds))
+        {
+            buttonCount = 3;
+            requiredAddends = 2;
+        }
+        else if (round < Mathf.Max(familiarizationRounds + 1, advancedStartRound))
+        {
+            buttonCount = 4;
+            requiredAddends = round >= familiarizationRounds + 2 ? 3 : 2;
+        }
+        else
+        {
+            buttonCount = 5;
+            requiredAddends = Mathf.Min(4, 3 + (round - advancedStartRound) / 3);
+        }
+
+        buttonCount = Mathf.Clamp(buttonCount, Mathf.Max(3, minButtonCount),
+            Mathf.Min(maxButtonCount, numberButtons.Count));
+        requiredAddends = Mathf.Clamp(requiredAddends, 2, Mathf.Max(2, buttonCount - 1));
+    }
+
+    List<int> GenerateValidNumberSet(int buttonCount, int requiredAddends)
     {
         List<int> numbers = new List<int>();
 
@@ -186,34 +213,32 @@ private void BindResultReturnButton()
                 numbers.Add(Random.Range(minNumber, maxNumber + 1));
             }
 
-            int answerCount = Random.Range(2, buttonCount);
             List<int> shuffled = new List<int>(numbers);
             Shuffle(shuffled);
 
             targetNumber = 0;
 
-            for (int i = 0; i < answerCount; i++)
+            for (int i = 0; i < requiredAddends; i++)
             {
                 targetNumber += shuffled[i];
             }
 
             bool targetEqualsSingleButton = numbers.Contains(targetNumber);
+            bool matchesPlannedDifficulty = FindMinimumSubsetSize(numbers, targetNumber) == requiredAddends;
 
-            if (!targetEqualsSingleButton)
+            if (!targetEqualsSingleButton && matchesPlannedDifficulty)
             {
                 return new List<int>(numbers);
             }
         }
 
         numbers.Clear();
-        numbers.Add(2);
-        numbers.Add(3);
-        numbers.Add(8);
-        targetNumber = 5;
+        targetNumber = requiredAddends * 2;
+        for (int i = 0; i < requiredAddends; i++) numbers.Add(2);
 
         while (numbers.Count < buttonCount)
         {
-            numbers.Add(Random.Range(minNumber, maxNumber + 1));
+            numbers.Add(targetNumber + 1);
         }
 
         return numbers;
@@ -243,6 +268,7 @@ private void BindResultReturnButton()
         Image image = button.GetComponent<Image>();
         if (image != null)
         {
+            originalColors[button] = image.color;
             if (normalButtonSprites != null && normalButtonSprites.Count > 0)
             {
                 Sprite randomSprite = normalButtonSprites[Random.Range(0, normalButtonSprites.Count)];
@@ -259,6 +285,10 @@ private void BindResultReturnButton()
         if (text != null)
         {
             text.text = number.ToString();
+            text.color = Color.white;
+            text.fontStyle = FontStyles.Bold;
+            text.outlineColor = new Color32(32, 51, 65, 255);
+            text.outlineWidth = 0.22f;
         }
 
         button.onClick.RemoveAllListeners();
@@ -279,15 +309,18 @@ private void BindResultReturnButton()
             initialPlanningTimeMs = Mathf.RoundToInt((Time.time - roundStartTime) * 1000f);
         int sumBeforeInput = currentSum;
 
-        if (selectedButtons.Contains(button))
+        bool isDeselecting = selectedButtons.Contains(button);
+        if (isDeselecting)
         {
             selectedButtons.Remove(button);
+            selectionOrder.Remove(button);
             currentSum -= number;
             SetButtonSelectedVisual(button, false);
         }
         else
         {
             selectedButtons.Add(button);
+            selectionOrder.Add(button);
             currentSum += number;
             SetButtonSelectedVisual(button, true);
         }
@@ -301,7 +334,6 @@ private void BindResultReturnButton()
         {
             RecordSelectionTrial(number, sumBeforeInput, false, "sum_exceeded_target");
             wrongClickCount++;
-            roundResetCount++;
             score -= wrongPenalty;
 
             if (score < 0)
@@ -309,11 +341,12 @@ private void BindResultReturnButton()
                 score = 0;
             }
 
-            ResetSelection();
+            // 保留目前選取，讓玩家再次點擊同一數字自行取消，而不是整題被強制清空。
         }
         else
         {
-            RecordSelectionTrial(number, sumBeforeInput, true, "partial_progress");
+            RecordSelectionTrial(number, sumBeforeInput, true,
+                isDeselecting ? "selection_removed" : "partial_progress");
         }
 
         UpdateUI();
@@ -332,6 +365,18 @@ private void BindResultReturnButton()
         {
             image.sprite = originalSprites[button];
         }
+
+        image.color = selected
+            ? new Color32(245, 158, 66, 255)
+            : (originalColors.TryGetValue(button, out Color original) ? original : Color.white);
+
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>();
+        if (label != null)
+        {
+            label.color = Color.white;
+            label.outlineColor = selected ? new Color32(115, 55, 18, 255) : new Color32(32, 51, 65, 255);
+            label.outlineWidth = 0.22f;
+        }
     }
 
     void ResetSelection()
@@ -345,6 +390,7 @@ private void BindResultReturnButton()
         }
 
         selectedButtons.Clear();
+        selectionOrder.Clear();
         currentSum = 0;
     }
 
@@ -441,8 +487,32 @@ private void BindResultReturnButton()
 
         if (targetText != null)
         {
-            targetText.text = "目標：" + targetNumber;
+            targetText.text = BuildEquationText();
+            targetText.color = currentSum > targetNumber
+                ? new Color32(190, 58, 52, 255)
+                : new Color32(42, 82, 88, 255);
         }
+
+        if (difficultyText != null)
+        {
+            string level = round <= familiarizationRounds ? "熟悉" :
+                (round < advancedStartRound ? "進階" : "挑戰");
+            difficultyText.text = "第 " + round + " 關｜" + level + "難度｜再點一次可取消";
+        }
+    }
+
+    string BuildEquationText()
+    {
+        int slotCount = Mathf.Max(Mathf.Max(2, minimumActionCount), selectionOrder.Count);
+        var slots = new List<string>(slotCount);
+        for (int i = 0; i < slotCount; i++)
+        {
+            if (i < selectionOrder.Count && buttonNumbers.TryGetValue(selectionOrder[i], out int value))
+                slots.Add(value.ToString());
+            else
+                slots.Add("＿＿");
+        }
+        return string.Join(" ＋ ", slots) + " ＝ " + targetNumber;
     }
 
     void EndGame()
