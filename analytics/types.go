@@ -2,79 +2,84 @@ package analytics
 
 import "time"
 
-// Domain identifies the cognitive ability measured by a game.
-type Domain string
-
-const (
-	DomainOverall           Domain = "overall"
-	DomainAttention         Domain = "attention"
-	DomainProcessingSpeed   Domain = "processing_speed"
-	DomainExecutiveFunction Domain = "executive_function"
-)
-
-// SubmitSessionParams contains raw measurements captured by Unity.
-// The API computes the 0-100 score so every client uses the same rules.
-type SubmitSessionParams struct {
-	SessionID          string    `json:"session_id"`
-	PlayerID           string    `json:"player_id"`
-	GameID             string    `json:"game_id"`
-	Domain             Domain    `json:"domain"`
-	Difficulty         int       `json:"difficulty"`
-	CorrectCount       int       `json:"correct_count"`
-	WrongCount         int       `json:"wrong_count"`
-	OmittedCount       int       `json:"omitted_count"`
-	AverageReactionMS  int       `json:"average_reaction_ms"`
-	DurationSeconds    int       `json:"duration_seconds"`
-	PlayedAt           time.Time `json:"played_at"`
-	TimezoneOffsetMins int       `json:"timezone_offset_minutes"`
+type GuestSignInRequest struct {
+	InstallationUID string `json:"installationUid"`
+	DisplayName     string `json:"displayName"`
 }
 
-// SessionResult is returned after Encore validates and scores a session.
-type SessionResult struct {
-	SessionID  string  `json:"session_id"`
-	PlayerID   string  `json:"player_id"`
-	GameID     string  `json:"game_id"`
-	Domain     Domain  `json:"domain"`
-	Score      int     `json:"score"`
-	Accuracy   float64 `json:"accuracy"`
-	Speed      float64 `json:"speed"`
-	Completion float64 `json:"completion"`
-	Created    bool    `json:"created"`
+type PlayerSessionResponse struct {
+	PlayerID     int64  `json:"playerId"`
+	PlayerCode   string `json:"playerCode"`
+	DisplayName  string `json:"displayName"`
+	AccessToken  string `json:"accessToken"`
+	ExpiresAtUTC string `json:"expiresAtUtc"`
+	IsNewPlayer  bool   `json:"isNewPlayer"`
 }
 
-type GetCognitiveSummaryParams struct {
-	RangeDays          int `query:"range_days"`
-	TimezoneOffsetMins int `query:"timezone_offset_minutes"`
+type UpdateProfileParams struct {
+	DisplayName    string `json:"displayName"`
+	BirthDate      string `json:"birthDate"`
+	SexCode        string `json:"sexCode"`
+	EducationYears int    `json:"educationYears"`
 }
 
-type CognitiveSummary struct {
-	PlayerID               string `json:"player_id"`
-	RangeDays              int    `json:"range_days"`
-	EffectiveDays          int    `json:"effective_days"`
-	RecordCount            int    `json:"record_count"`
-	AttentionScore         int    `json:"attention_score"`
-	ProcessingSpeedScore   int    `json:"processing_speed_score"`
-	ExecutiveFunctionScore int    `json:"executive_function_score"`
-	OverallScore           int    `json:"overall_score"`
+type PlayerProfile struct {
+	PlayerID       int64  `json:"playerId"`
+	PlayerCode     string `json:"playerCode"`
+	DisplayName    string `json:"displayName"`
+	BirthDate      string `json:"birthDate"`
+	SexCode        string `json:"sexCode"`
+	EducationYears int    `json:"educationYears"`
 }
 
-type GetCognitiveTrendsParams struct {
-	RangeDays          int    `query:"range_days"`
-	Domain             string `query:"domain"`
-	TimezoneOffsetMins int    `query:"timezone_offset_minutes"`
+type TrialRequest struct {
+	TrialIndex       int    `json:"trialIndex"`
+	TrialType        string `json:"trialType"`
+	ExpectedResponse string `json:"expectedResponse"`
+	ActualResponse   string `json:"actualResponse"`
+	ReactionTimeMS   int    `json:"reactionTimeMs"`
 }
 
-type TrendPoint struct {
-	Date         string `json:"date"`
-	Score        int    `json:"score"`
-	SessionCount int    `json:"session_count"`
+type MetricRequest struct {
+	MetricCode  string  `json:"metricCode"`
+	Value       float64 `json:"value"`
+	DomainCode  string  `json:"domainCode"`
+	QualityFlag string  `json:"qualityFlag"`
 }
 
-type CognitiveTrends struct {
-	PlayerID      string            `json:"player_id"`
-	RangeDays     int               `json:"range_days"`
-	Domain        Domain            `json:"domain"`
-	EffectiveDays int               `json:"effective_days"`
-	Summary       *CognitiveSummary `json:"summary"`
-	Points        []*TrendPoint     `json:"points"`
+type AssessmentRequest struct {
+	SessionID        string          `json:"sessionId"`
+	GameCode         string          `json:"gameCode"`
+	StartedAtUTC     time.Time       `json:"startedAtUtc"`
+	EndedAtUTC       time.Time       `json:"endedAtUtc"`
+	CompletionStatus string          `json:"completionStatus"`
+	Trials           []TrialRequest  `json:"trials"`
+	Metrics          []MetricRequest `json:"metrics"`
+}
+
+type AssessmentResponse struct {
+	SessionID   string `json:"sessionId"`
+	Stored      bool   `json:"stored"`
+	Created     bool   `json:"created"`
+	TrialCount  int    `json:"trialCount"`
+	MetricCount int    `json:"metricCount"`
+}
+
+type HeartbeatResponse struct {
+	PlayerID  int64  `json:"playerId"`
+	SeenAtUTC string `json:"seenAtUtc"`
+}
+
+type DomainAverage struct {
+	Domain       string  `json:"domain"`
+	AverageScore float64 `json:"averageScore"`
+	RecordCount  int     `json:"recordCount"`
+}
+
+type DashboardOverview struct {
+	OnlineUsers       int             `json:"onlineUsers"`
+	TotalPlayers      int             `json:"totalPlayers"`
+	CompletedSessions int             `json:"completedSessions"`
+	GeneratedAtUTC    string          `json:"generatedAtUtc"`
+	CognitiveAverages []DomainAverage `json:"cognitiveAverages"`
 }
