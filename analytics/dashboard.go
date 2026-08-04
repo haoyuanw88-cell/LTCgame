@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-const onlineWindow = 5 * time.Minute
-
 // GetDashboardOverview returns the lightweight aggregate used by the admin page.
 // It intentionally exposes no player-level or health-identifying information.
 //
@@ -24,10 +22,10 @@ func loadDashboardOverview(ctx context.Context) (*DashboardOverview, error) {
 	}
 	if err := db.QueryRow(ctx, `
 		SELECT
-			COUNT(*) FILTER (WHERE last_seen_ts >= NOW() - $1::INTERVAL),
+			COUNT(*) FILTER (WHERE last_seen_ts >= NOW() - INTERVAL '5 minutes'),
 			COUNT(*)
 		FROM player
-	`, intervalString(onlineWindow)).Scan(&overview.OnlineUsers, &overview.TotalPlayers); err != nil {
+	`).Scan(&overview.OnlineUsers, &overview.TotalPlayers); err != nil {
 		return nil, err
 	}
 	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM game_session`).Scan(&overview.CompletedSessions); err != nil {
@@ -58,10 +56,6 @@ func loadDashboardOverview(ctx context.Context) (*DashboardOverview, error) {
 		return nil, err
 	}
 	return overview, nil
-}
-
-func intervalString(value time.Duration) string {
-	return value.String()
 }
 
 // Dashboard serves a no-build, same-origin dashboard for the graduation demo.
