@@ -1598,6 +1598,8 @@ MonoBehaviour:
   maxButtonCount: 5
   minNumber: 1
   maxNumber: 15
+  familiarizationRounds: 2
+  advancedStartRound: 6
 --- !u!4 &744308517
 Transform:
   m_ObjectHideFlags: 0

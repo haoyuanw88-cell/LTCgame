@@ -3000,7 +3000,8 @@ MonoBehaviour:
   positiveMin: 1
   positiveMax: 30
   negativeMin: -20
-  negativeStartRound: 4
+  negativeStartRound: 5
+  roundsPerNumberIncrease: 2
 --- !u!4 &1123123754
 Transform:
   m_ObjectHideFlags: 0
