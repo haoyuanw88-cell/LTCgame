@@ -15,7 +15,7 @@ namespace LTCCognitiveAssessment
     public sealed class CognitiveApiUploader : MonoBehaviour
     {
         public const string ApiBaseUrlPlayerPrefsKey = "LTC_CognitiveApiBaseUrl";
-        const string DefaultApiBaseUrl = "http://localhost:5077";
+        const string DefaultApiBaseUrl = "https://staging-hello-8shi.encr.app";
         static CognitiveApiUploader instance;
         readonly Queue<string> pendingFiles = new Queue<string>();
         bool isProcessing;
@@ -121,7 +121,7 @@ void OnDestroy()
                 }
 
                 bool uploaded = false;
-                yield return PostJson("/api/v1/assessments/", BuildAssessmentJson(session), ok => uploaded = ok);
+                yield return PostJson("/api/v1/assessments", BuildAssessmentJson(session), ok => uploaded = ok);
                 if (!uploaded) break;
 
                 try { File.Delete(path); }

@@ -23,10 +23,13 @@ namespace LTC.Identity
     public sealed class PlayerIdentityService : MonoBehaviour, IPlayerIdentityProvider
     {
         public const string ApiBaseUrlPlayerPrefsKey = "LTC_CognitiveApiBaseUrl";
-        const string DefaultApiBaseUrl = "http://127.0.0.1:5077";
+        const string DefaultApiBaseUrl = "https://staging-hello-8shi.encr.app";
         const int MaximumRetryDelaySeconds = 60;
+        const int HeartbeatIntervalSeconds = 60;
         static PlayerIdentityService instance;
         Coroutine signInRoutine;
+        Coroutine heartbeatRoutine;
+        Coroutine profileSyncRoutine;
         bool connectionWarningLogged;
 
         public static IPlayerIdentityProvider Current
@@ -73,11 +76,15 @@ namespace LTC.Identity
         {
             StopAllCoroutines();
             signInRoutine = null;
+            heartbeatRoutine = null;
+            profileSyncRoutine = null;
         }
 
         void OnDestroy()
         {
             StopAllCoroutines();
+            heartbeatRoutine = null;
+            profileSyncRoutine = null;
             if (instance == this) instance = null;
         }
 
@@ -85,9 +92,19 @@ namespace LTC.Identity
         public void Refresh()
         {
             if (signInRoutine != null) StopCoroutine(signInRoutine);
+            if (heartbeatRoutine != null) StopCoroutine(heartbeatRoutine);
             IsReady = false;
             AccessToken = string.Empty;
+            heartbeatRoutine = null;
             signInRoutine = StartCoroutine(SignInWithRetry());
+        }
+
+        public static void SyncCurrentProfile()
+        {
+            var service = Current as PlayerIdentityService;
+            if (service == null || !service.IsReady) return;
+            if (service.profileSyncRoutine != null) service.StopCoroutine(service.profileSyncRoutine);
+            service.profileSyncRoutine = service.StartCoroutine(service.SyncProfileRoutine());
         }
 
         IEnumerator SignInWithRetry()
@@ -124,6 +141,10 @@ namespace LTC.Identity
                             PlayerCode = response.playerCode;
                             AccessToken = response.accessToken;
                             IsReady = true;
+                            connectionWarningLogged = false;
+                            if (heartbeatRoutine != null) StopCoroutine(heartbeatRoutine);
+                            heartbeatRoutine = StartCoroutine(HeartbeatLoop());
+                            if (HasCompletedProfile()) SyncCurrentProfile();
                             IdentityChanged?.Invoke();
                             break;
                         }
@@ -143,6 +164,81 @@ namespace LTC.Identity
                 }
             }
             signInRoutine = null;
+        }
+
+        IEnumerator HeartbeatLoop()
+        {
+            while (isActiveAndEnabled && IsReady)
+            {
+                using (var request = new UnityWebRequest(ApiBaseUrl + "/api/v1/presence/heartbeat", UnityWebRequest.kHttpVerbPOST))
+                {
+                    request.uploadHandler = new UploadHandlerRaw(Array.Empty<byte>());
+                    request.downloadHandler = new DownloadHandlerBuffer();
+                    request.SetRequestHeader("Authorization", "Bearer " + AccessToken);
+                    request.timeout = 10;
+                    yield return request.SendWebRequest();
+                    if (request.responseCode == 401)
+                    {
+                        IsReady = false;
+                        AccessToken = string.Empty;
+                        heartbeatRoutine = null;
+                        if (signInRoutine != null) StopCoroutine(signInRoutine);
+                        signInRoutine = StartCoroutine(SignInWithRetry());
+                        yield break;
+                    }
+                }
+                yield return new WaitForSecondsRealtime(HeartbeatIntervalSeconds);
+            }
+            heartbeatRoutine = null;
+        }
+
+        IEnumerator SyncProfileRoutine()
+        {
+            var payload = new ProfileUpdateRequest
+            {
+                displayName = ResolveDisplayName(),
+                birthDate = PlayerPrefs.GetString("LTC_ProfileBirthDate", string.Empty),
+                sexCode = PlayerPrefs.GetString("LTC_ProfileGender", string.Empty),
+                educationYears = EducationYears(PlayerPrefs.GetString("LTC_ProfileEducation", string.Empty))
+            };
+            if (string.IsNullOrWhiteSpace(payload.birthDate) || string.IsNullOrWhiteSpace(payload.sexCode))
+            {
+                profileSyncRoutine = null;
+                yield break;
+            }
+
+            byte[] body = Encoding.UTF8.GetBytes(JsonUtility.ToJson(payload));
+            using (var request = new UnityWebRequest(ApiBaseUrl + "/api/v1/profile", UnityWebRequest.kHttpVerbPUT))
+            {
+                request.uploadHandler = new UploadHandlerRaw(body);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+                request.SetRequestHeader("Authorization", "Bearer " + AccessToken);
+                request.timeout = 10;
+                yield return request.SendWebRequest();
+                if (request.result != UnityWebRequest.Result.Success)
+                    Debug.LogWarning("玩家基本資料尚未同步至後端：" + request.error);
+            }
+            profileSyncRoutine = null;
+        }
+
+        static bool HasCompletedProfile()
+        {
+            return !string.IsNullOrWhiteSpace(PlayerPrefs.GetString("LTC_ProfileBirthDate", string.Empty)) &&
+                   !string.IsNullOrWhiteSpace(PlayerPrefs.GetString("LTC_ProfileGender", string.Empty));
+        }
+
+        static int EducationYears(string code)
+        {
+            switch (code)
+            {
+                case "primary": return 6;
+                case "junior_high": return 9;
+                case "senior_high": return 12;
+                case "college": return 16;
+                case "graduate": return 18;
+                default: return 0;
+            }
         }
 
 
@@ -191,6 +287,15 @@ namespace LTC.Identity
         {
             public string installationUid;
             public string displayName;
+        }
+
+        [Serializable]
+        sealed class ProfileUpdateRequest
+        {
+            public string displayName;
+            public string birthDate;
+            public string sexCode;
+            public int educationYears;
         }
 
         [Serializable]

@@ -867,6 +867,7 @@ private void BuildStatisticsPage(Transform parent)
         PlayerPrefs.SetString("LTC_ProfileEducation", EducationCodes[onboardingEducationIndex]);
         PlayerPrefs.SetInt(OnboardingCompletedKey, 1);
         PlayerPrefs.Save();
+        LTC.Identity.PlayerIdentityService.SyncCurrentProfile();
         CloseOnboarding();
     }
 
