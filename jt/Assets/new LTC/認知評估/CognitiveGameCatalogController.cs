@@ -173,21 +173,25 @@ public class CognitiveGameCatalogController : MonoBehaviour
     private TMP_Text statisticsSpeedScore;
     private TMP_Text statisticsExecutiveScore;
     private CognitiveTrendChartGraphic trendChart;
-    private TMP_Text profileText;
     private TMP_InputField profileNameInput;
     private TMP_Text profileNameStatus;
+    private TMP_Text profileBirthDateValue;
+    private TMP_Text profileGenderValue;
+    private TMP_Text profileEducationValue;
+    private TMP_Text profileCoinValue;
+    private TMP_Text profileRecordValue;
     private TMP_Text dailyLoginButtonText;
     private GameObject dailyLoginPopup;
     private TMP_Text dailyLoginPopupMessage;
     private Button dailyLoginClaimButton;
     private TMP_Text dailyLoginClaimButtonText;
     private GameObject onboardingPopup;
-    private TMP_InputField onboardingBirthDateInput;
-    private TMP_Text onboardingGenderText;
-    private TMP_Text onboardingEducationText;
+    private LTCDateWheelField onboardingYearWheel;
+    private LTCDateWheelField onboardingMonthWheel;
+    private LTCDateWheelField onboardingDayWheel;
+    private LTCOptionDropdown onboardingGenderDropdown;
+    private LTCOptionDropdown onboardingEducationDropdown;
     private TMP_Text onboardingStatusText;
-    private int onboardingGenderIndex;
-    private int onboardingEducationIndex;
     private static readonly string[] GenderLabels = { "請選擇", "女性", "男性", "其他", "不願透露" };
     private static readonly string[] GenderCodes = { "", "female", "male", "other", "prefer_not_to_say" };
     private static readonly string[] EducationLabels = { "請選擇", "未受正式教育", "國小", "國中", "高中職", "大專院校", "研究所以上" };
@@ -234,11 +238,14 @@ public class CognitiveGameCatalogController : MonoBehaviour
         bool hasIntegratedGames = existingCanvas.GetComponentsInChildren<Button>(true)
             .Any(button => button.name == "遊戲_翻牌記憶");
         bool interfaceIsCurrent = navigation != null &&
+                                  existingCanvas.Find("UI版本_2") != null &&
                                   navigation.Find("商店") != null &&
                                   navigation.Find("寵物") != null &&
                                   existingCanvas.Find("我的頁/個人資料內容/名稱輸入") != null &&
+                                  existingCanvas.Find("我的頁/個人資料內容/基本資料卡/出生年月日/數值") != null &&
                                   existingCanvas.Find("每日登入彈窗") != null &&
-                                  existingCanvas.Find("首次引導") != null &&
+                                  existingCanvas.Find("首次引導/引導卡片/生日滾輪") != null &&
+                                  existingCanvas.Find("首次引導/引導卡片/性別下拉") != null &&
                                   hasIntegratedGames;
         if (!interfaceIsCurrent)
         {
@@ -281,6 +288,8 @@ public class CognitiveGameCatalogController : MonoBehaviour
         scaler.referenceResolution = new Vector2(1366f, 768f);
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = 0.5f;
+        var versionMarker = new GameObject("UI版本_2", typeof(RectTransform));
+        versionMarker.transform.SetParent(canvasObject.transform, false);
 
         catalogPage = CreatePanel(canvasObject.transform, "遊戲首頁", backgroundColor, Vector2.zero, Vector2.one);
         ApplyPageBackground(catalogPage);
@@ -312,7 +321,7 @@ public class CognitiveGameCatalogController : MonoBehaviour
 
         var npcPanel = CreatePanel(card.transform, "NPC區", new Color(0.84f, 0.94f, 0.87f, 1f),
             new Vector2(0.03f, 0.06f), new Vector2(0.39f, 0.94f));
-        TMP_Text npcIcon = CreateText(npcPanel.transform, "NPC圖像", "☺", 110, FontStyles.Bold, TextAlignmentOptions.Center);
+        TMP_Text npcIcon = CreateText(npcPanel.transform, "NPC圖像", "樂", 92, FontStyles.Bold, TextAlignmentOptions.Center);
         npcIcon.color = accentColor;
         SetRect(npcIcon.rectTransform, new Vector2(0.15f, 0.58f), new Vector2(0.85f, 0.90f), Vector2.zero, Vector2.zero);
         TMP_Text npcName = CreateText(npcPanel.transform, "NPC名稱", "樂齡小幫手・小樂", 27, FontStyles.Bold, TextAlignmentOptions.Center);
@@ -328,25 +337,33 @@ public class CognitiveGameCatalogController : MonoBehaviour
         privacy.color = new Color(0.40f, 0.44f, 0.40f);
         SetRect(privacy.rectTransform, new Vector2(0.44f, 0.70f), new Vector2(0.95f, 0.80f), Vector2.zero, Vector2.zero);
 
-        TMP_Text birthLabel = CreateText(card.transform, "生日標題", "出生年月日", 22, FontStyles.Bold, TextAlignmentOptions.Left);
-        SetRect(birthLabel.rectTransform, new Vector2(0.44f, 0.61f), new Vector2(0.61f, 0.68f), Vector2.zero, Vector2.zero);
-        onboardingBirthDateInput = CreateInputField(card.transform, "生日輸入", "例如：1950-08-20",
-            PlayerPrefs.GetString("LTC_ProfileBirthDate", string.Empty));
-        SetRect(onboardingBirthDateInput.GetComponent<RectTransform>(), new Vector2(0.62f, 0.59f), new Vector2(0.94f, 0.68f), Vector2.zero, Vector2.zero);
+        TMP_Text birthLabel = CreateText(card.transform, "生日標題", "出生年月日（可滑動或按箭頭）", 21,
+            FontStyles.Bold, TextAlignmentOptions.Left);
+        SetRect(birthLabel.rectTransform, new Vector2(0.44f, 0.64f), new Vector2(0.94f, 0.70f), Vector2.zero,
+            Vector2.zero);
+        GameObject dateWheel = CreatePanel(card.transform, "生日滾輪", new Color(0.95f, 0.94f, 0.89f, 1f),
+            new Vector2(0.44f, 0.47f), new Vector2(0.94f, 0.64f));
+        int defaultYear = Mathf.Max(1900, DateTime.Today.Year - 70);
+        onboardingYearWheel = CreateDateWheel(dateWheel.transform, "年份", 1900, DateTime.Today.Year, defaultYear,
+            " 年", 0.01f, 0.40f);
+        onboardingMonthWheel = CreateDateWheel(dateWheel.transform, "月份", 1, 12, 1, " 月", 0.405f, 0.70f);
+        onboardingDayWheel = CreateDateWheel(dateWheel.transform, "日期", 1, 31, 1, " 日", 0.705f, 0.99f);
 
-        Button gender = CreateButton(card.transform, "性別選擇", "性別：請選擇", new Color(0.48f, 0.67f, 0.76f, 1f));
-        SetRect(gender.GetComponent<RectTransform>(), new Vector2(0.44f, 0.45f), new Vector2(0.94f, 0.56f), Vector2.zero, Vector2.zero);
-        onboardingGenderText = gender.GetComponentInChildren<TMP_Text>();
-        Button education = CreateButton(card.transform, "教育程度選擇", "教育程度：請選擇", accentColor);
-        SetRect(education.GetComponent<RectTransform>(), new Vector2(0.44f, 0.31f), new Vector2(0.94f, 0.42f), Vector2.zero, Vector2.zero);
-        onboardingEducationText = education.GetComponentInChildren<TMP_Text>();
+        onboardingGenderDropdown = CreateOptionDropdown(card.transform, "性別下拉", "性別", GenderLabels,
+            GenderCodes, new Color(0.48f, 0.67f, 0.76f, 1f), false);
+        SetRect(onboardingGenderDropdown.GetComponent<RectTransform>(), new Vector2(0.44f, 0.36f),
+            new Vector2(0.94f, 0.45f), Vector2.zero, Vector2.zero);
+        onboardingEducationDropdown = CreateOptionDropdown(card.transform, "教育程度下拉", "教育程度",
+            EducationLabels, EducationCodes, accentColor, true);
+        SetRect(onboardingEducationDropdown.GetComponent<RectTransform>(), new Vector2(0.44f, 0.25f),
+            new Vector2(0.94f, 0.34f), Vector2.zero, Vector2.zero);
 
         onboardingStatusText = CreateText(card.transform, "狀態", string.Empty, 18, FontStyles.Normal, TextAlignmentOptions.Center);
-        SetRect(onboardingStatusText.rectTransform, new Vector2(0.44f, 0.23f), new Vector2(0.94f, 0.30f), Vector2.zero, Vector2.zero);
+        SetRect(onboardingStatusText.rectTransform, new Vector2(0.44f, 0.19f), new Vector2(0.94f, 0.25f), Vector2.zero, Vector2.zero);
         Button save = CreateButton(card.transform, "儲存並開始", "儲存並開始", orangeColor);
-        SetRect(save.GetComponent<RectTransform>(), new Vector2(0.62f, 0.09f), new Vector2(0.94f, 0.21f), Vector2.zero, Vector2.zero);
+        SetRect(save.GetComponent<RectTransform>(), new Vector2(0.62f, 0.07f), new Vector2(0.94f, 0.18f), Vector2.zero, Vector2.zero);
         Button later = CreateButton(card.transform, "稍後填寫", "稍後填寫", mutedColor);
-        SetRect(later.GetComponent<RectTransform>(), new Vector2(0.44f, 0.09f), new Vector2(0.60f, 0.21f), Vector2.zero, Vector2.zero);
+        SetRect(later.GetComponent<RectTransform>(), new Vector2(0.44f, 0.07f), new Vector2(0.60f, 0.18f), Vector2.zero, Vector2.zero);
         return overlay;
     }
 
@@ -580,36 +597,47 @@ private void BuildStatisticsPage(Transform parent)
         GameObject panel = CreatePanel(parent, "個人資料內容", surfaceColor, new Vector2(0.07f, 0.20f),
             new Vector2(0.93f, 0.80f));
 
-        TMP_Text nameLabel = CreateText(panel.transform, "名稱標題", "使用者名稱", 25, FontStyles.Bold,
+        TMP_Text nameLabel = CreateText(panel.transform, "名稱標題", "使用者名稱", 23, FontStyles.Bold,
             TextAlignmentOptions.Left);
-        SetRect(nameLabel.rectTransform, new Vector2(0.06f, 0.79f), new Vector2(0.58f, 0.91f), Vector2.zero,
+        SetRect(nameLabel.rectTransform, new Vector2(0.05f, 0.82f), new Vector2(0.55f, 0.93f), Vector2.zero,
             Vector2.zero);
 
         profileNameInput = CreateInputField(panel.transform, "名稱輸入", "請輸入名稱", GetPlayerName());
-        SetRect(profileNameInput.GetComponent<RectTransform>(), new Vector2(0.06f, 0.61f),
-            new Vector2(0.45f, 0.78f), Vector2.zero, Vector2.zero);
+        SetRect(profileNameInput.GetComponent<RectTransform>(), new Vector2(0.05f, 0.68f),
+            new Vector2(0.43f, 0.82f), Vector2.zero, Vector2.zero);
         Button saveName = CreateButton(panel.transform, "儲存名稱", "儲存名稱", accentColor);
-        SetRect(saveName.GetComponent<RectTransform>(), new Vector2(0.47f, 0.61f), new Vector2(0.62f, 0.78f),
+        SetRect(saveName.GetComponent<RectTransform>(), new Vector2(0.45f, 0.68f), new Vector2(0.62f, 0.82f),
             Vector2.zero, Vector2.zero);
         profileNameStatus = CreateText(panel.transform, "名稱狀態", "名稱會顯示在首頁與個人資料中", 18,
             FontStyles.Normal, TextAlignmentOptions.Left);
         profileNameStatus.color = new Color(0.38f, 0.43f, 0.39f);
-        SetRect(profileNameStatus.rectTransform, new Vector2(0.06f, 0.51f), new Vector2(0.62f, 0.61f),
+        SetRect(profileNameStatus.rectTransform, new Vector2(0.05f, 0.61f), new Vector2(0.62f, 0.68f),
             Vector2.zero, Vector2.zero);
 
-        profileText = CreateText(panel.transform, "個人資料", BuildProfileText(), 23, FontStyles.Normal,
-            TextAlignmentOptions.TopLeft);
-        profileText.color = textColor;
-        SetRect(profileText.rectTransform, new Vector2(0.06f, 0.08f), new Vector2(0.64f, 0.49f), Vector2.zero,
+        GameObject profileCard = CreatePanel(panel.transform, "基本資料卡", new Color(0.95f, 0.97f, 0.92f, 1f),
+            new Vector2(0.05f, 0.08f), new Vector2(0.65f, 0.59f));
+        TMP_Text profileTitle = CreateText(profileCard.transform, "標題", "基本資料", 25, FontStyles.Bold,
+            TextAlignmentOptions.Left);
+        profileTitle.color = accentColor;
+        SetRect(profileTitle.rectTransform, new Vector2(0.05f, 0.81f), new Vector2(0.95f, 0.96f), Vector2.zero,
             Vector2.zero);
+        profileBirthDateValue = CreateProfileDataRow(profileCard.transform, "出生年月日", "出生年月日", 0.64f);
+        profileGenderValue = CreateProfileDataRow(profileCard.transform, "性別", "性別", 0.48f);
+        profileEducationValue = CreateProfileDataRow(profileCard.transform, "教育程度", "教育程度", 0.32f);
+        profileCoinValue = CreateProfileDataRow(profileCard.transform, "持有金幣", "持有金幣", 0.16f);
+        profileRecordValue = CreateProfileDataRow(profileCard.transform, "有效紀錄", "有效測驗紀錄", 0.00f);
+
+        Button editProfile = CreateButton(panel.transform, "編輯基本資料", "編輯基本資料", accentColor);
+        SetRect(editProfile.GetComponent<RectTransform>(), new Vector2(0.69f, 0.55f), new Vector2(0.94f, 0.68f),
+            Vector2.zero, Vector2.zero);
 
         Button settings = CreateButton(panel.transform, "設定", "設定（開發中）", mutedColor);
-        SetRect(settings.GetComponent<RectTransform>(), new Vector2(0.70f, 0.76f), new Vector2(0.93f, 0.91f),
+        SetRect(settings.GetComponent<RectTransform>(), new Vector2(0.69f, 0.39f), new Vector2(0.94f, 0.52f),
             Vector2.zero, Vector2.zero);
         settings.interactable = false;
 
         Button dailyLogin = CreateCircleButton(panel.transform, "每日登入", orangeColor);
-        SetRect(dailyLogin.GetComponent<RectTransform>(), new Vector2(0.72f, 0.22f), new Vector2(0.91f, 0.70f),
+        SetRect(dailyLogin.GetComponent<RectTransform>(), new Vector2(0.72f, 0.05f), new Vector2(0.91f, 0.37f),
             Vector2.zero, Vector2.zero);
         dailyLoginButtonText = CreateText(dailyLogin.transform, "文字", "每日登入\n可領取", 24, FontStyles.Bold,
             TextAlignmentOptions.Center);
@@ -738,16 +766,22 @@ private void BuildStatisticsPage(Transform parent)
         statisticsAttentionScore = statisticsPage.transform.Find("注意力摘要/分數")?.GetComponent<TMP_Text>();
         statisticsSpeedScore = statisticsPage.transform.Find("速度摘要/分數")?.GetComponent<TMP_Text>();
         statisticsExecutiveScore = statisticsPage.transform.Find("執行摘要/分數")?.GetComponent<TMP_Text>();
-        profileText = profilePage.transform.Find("個人資料內容/個人資料")?.GetComponent<TMP_Text>();
         profileNameInput = profilePage.transform.Find("個人資料內容/名稱輸入")?.GetComponent<TMP_InputField>();
         profileNameStatus = profilePage.transform.Find("個人資料內容/名稱狀態")?.GetComponent<TMP_Text>();
+        profileBirthDateValue = profilePage.transform.Find("個人資料內容/基本資料卡/出生年月日/數值")?.GetComponent<TMP_Text>();
+        profileGenderValue = profilePage.transform.Find("個人資料內容/基本資料卡/性別/數值")?.GetComponent<TMP_Text>();
+        profileEducationValue = profilePage.transform.Find("個人資料內容/基本資料卡/教育程度/數值")?.GetComponent<TMP_Text>();
+        profileCoinValue = profilePage.transform.Find("個人資料內容/基本資料卡/持有金幣/數值")?.GetComponent<TMP_Text>();
+        profileRecordValue = profilePage.transform.Find("個人資料內容/基本資料卡/有效紀錄/數值")?.GetComponent<TMP_Text>();
         dailyLoginButtonText = profilePage.transform.Find("個人資料內容/每日登入/文字")?.GetComponent<TMP_Text>();
         dailyLoginPopupMessage = dailyLoginPopup?.transform.Find("簽到卡片/說明")?.GetComponent<TMP_Text>();
         dailyLoginClaimButton = dailyLoginPopup?.transform.Find("簽到卡片/領取")?.GetComponent<Button>();
         dailyLoginClaimButtonText = dailyLoginClaimButton?.GetComponentInChildren<TMP_Text>();
-        onboardingBirthDateInput = onboardingPopup?.transform.Find("引導卡片/生日輸入")?.GetComponent<TMP_InputField>();
-        onboardingGenderText = onboardingPopup?.transform.Find("引導卡片/性別選擇/文字")?.GetComponent<TMP_Text>();
-        onboardingEducationText = onboardingPopup?.transform.Find("引導卡片/教育程度選擇/文字")?.GetComponent<TMP_Text>();
+        onboardingYearWheel = onboardingPopup?.transform.Find("引導卡片/生日滾輪/年份")?.GetComponent<LTCDateWheelField>();
+        onboardingMonthWheel = onboardingPopup?.transform.Find("引導卡片/生日滾輪/月份")?.GetComponent<LTCDateWheelField>();
+        onboardingDayWheel = onboardingPopup?.transform.Find("引導卡片/生日滾輪/日期")?.GetComponent<LTCDateWheelField>();
+        onboardingGenderDropdown = onboardingPopup?.transform.Find("引導卡片/性別下拉")?.GetComponent<LTCOptionDropdown>();
+        onboardingEducationDropdown = onboardingPopup?.transform.Find("引導卡片/教育程度下拉")?.GetComponent<LTCOptionDropdown>();
         onboardingStatusText = onboardingPopup?.transform.Find("引導卡片/狀態")?.GetComponent<TMP_Text>();
         detailDomain = detailPage.transform.Find("分類標題")?.GetComponent<TMP_Text>();
         detailTitle = detailPage.transform.Find("遊戲標題")?.GetComponent<TMP_Text>();
@@ -761,18 +795,17 @@ private void BuildStatisticsPage(Transform parent)
         if (start != null) start.onClick.AddListener(StartSelectedGame);
 
         Button saveName = profilePage.transform.Find("個人資料內容/儲存名稱")?.GetComponent<Button>();
+        Button editProfile = profilePage.transform.Find("個人資料內容/編輯基本資料")?.GetComponent<Button>();
         Button dailyLogin = profilePage.transform.Find("個人資料內容/每日登入")?.GetComponent<Button>();
         Button closeDailyLogin = dailyLoginPopup?.transform.Find("簽到卡片/稍後再說")?.GetComponent<Button>();
-        Button chooseGender = onboardingPopup?.transform.Find("引導卡片/性別選擇")?.GetComponent<Button>();
-        Button chooseEducation = onboardingPopup?.transform.Find("引導卡片/教育程度選擇")?.GetComponent<Button>();
         Button saveOnboarding = onboardingPopup?.transform.Find("引導卡片/儲存並開始")?.GetComponent<Button>();
         Button skipOnboarding = onboardingPopup?.transform.Find("引導卡片/稍後填寫")?.GetComponent<Button>();
         if (saveName != null) saveName.onClick.AddListener(SavePlayerName);
+        if (editProfile != null) editProfile.onClick.AddListener(OpenOnboarding);
         if (dailyLogin != null) dailyLogin.onClick.AddListener(OpenDailyLoginPopup);
         if (dailyLoginClaimButton != null) dailyLoginClaimButton.onClick.AddListener(ClaimDailyLoginReward);
         if (closeDailyLogin != null) closeDailyLogin.onClick.AddListener(CloseDailyLoginPopup);
-        if (chooseGender != null) chooseGender.onClick.AddListener(CycleOnboardingGender);
-        if (chooseEducation != null) chooseEducation.onClick.AddListener(CycleOnboardingEducation);
+        BindDateWheels();
         if (saveOnboarding != null) saveOnboarding.onClick.AddListener(SaveOnboardingProfile);
         if (skipOnboarding != null) skipOnboarding.onClick.AddListener(CloseOnboarding);
 
@@ -821,50 +854,62 @@ private void BuildStatisticsPage(Transform parent)
     private void OpenOnboarding()
     {
         if (onboardingPopup == null) return;
-        onboardingGenderIndex = FindCodeIndex(GenderCodes, PlayerPrefs.GetString("LTC_ProfileGender", string.Empty));
-        onboardingEducationIndex = FindCodeIndex(EducationCodes, PlayerPrefs.GetString("LTC_ProfileEducation", string.Empty));
-        if (onboardingBirthDateInput != null)
-            onboardingBirthDateInput.text = PlayerPrefs.GetString("LTC_ProfileBirthDate", string.Empty);
-        RefreshOnboardingChoices();
+        DateTime selectedDate = new DateTime(Mathf.Max(1900, DateTime.Today.Year - 70), 1, 1);
+        string storedBirthDate = PlayerPrefs.GetString("LTC_ProfileBirthDate", string.Empty);
+        if (DateTime.TryParseExact(storedBirthDate, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out DateTime parsedDate))
+            selectedDate = parsedDate;
+        SetDateWheels(selectedDate);
+        onboardingGenderDropdown?.SelectCode(PlayerPrefs.GetString("LTC_ProfileGender", string.Empty));
+        onboardingEducationDropdown?.SelectCode(PlayerPrefs.GetString("LTC_ProfileEducation", string.Empty));
         if (onboardingStatusText != null) onboardingStatusText.text = string.Empty;
         if (dailyLoginPopup != null) dailyLoginPopup.SetActive(false);
         onboardingPopup.SetActive(true);
         onboardingPopup.transform.SetAsLastSibling();
     }
 
-    private void CycleOnboardingGender()
+    private void BindDateWheels()
     {
-        onboardingGenderIndex = (onboardingGenderIndex + 1) % GenderLabels.Length;
-        RefreshOnboardingChoices();
+        if (onboardingYearWheel != null) onboardingYearWheel.ValueChanged += OnDateWheelChanged;
+        if (onboardingMonthWheel != null) onboardingMonthWheel.ValueChanged += OnDateWheelChanged;
     }
 
-    private void CycleOnboardingEducation()
+    private void OnDateWheelChanged(int unused)
     {
-        onboardingEducationIndex = (onboardingEducationIndex + 1) % EducationLabels.Length;
-        RefreshOnboardingChoices();
+        RefreshDayWheelRange();
     }
 
-    private void RefreshOnboardingChoices()
+    private void SetDateWheels(DateTime date)
     {
-        if (onboardingGenderText != null) onboardingGenderText.text = "性別：" + GenderLabels[onboardingGenderIndex];
-        if (onboardingEducationText != null) onboardingEducationText.text = "教育程度：" + EducationLabels[onboardingEducationIndex];
+        onboardingYearWheel?.SetRange(1900, DateTime.Today.Year, date.Year);
+        onboardingMonthWheel?.SetRange(1, 12, date.Month);
+        onboardingDayWheel?.SetRange(1, DateTime.DaysInMonth(date.Year, date.Month), date.Day);
+    }
+
+    private void RefreshDayWheelRange()
+    {
+        if (onboardingYearWheel == null || onboardingMonthWheel == null || onboardingDayWheel == null) return;
+        int maximumDay = DateTime.DaysInMonth(onboardingYearWheel.Value, onboardingMonthWheel.Value);
+        onboardingDayWheel.SetRange(1, maximumDay, Mathf.Min(onboardingDayWheel.Value, maximumDay));
     }
 
     private void SaveOnboardingProfile()
     {
-        string birthText = onboardingBirthDateInput == null ? string.Empty : onboardingBirthDateInput.text.Trim();
-        if (!DateTime.TryParseExact(birthText, "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out DateTime birthDate) || birthDate.Date > DateTime.Today || birthDate.Year < 1900)
+        if (onboardingYearWheel == null || onboardingMonthWheel == null || onboardingDayWheel == null)
         {
-            ShowOnboardingError("請以西元年輸入有效生日，例如 1950-08-20");
+            ShowOnboardingError("日期選擇器尚未準備完成");
             return;
         }
-        if (onboardingGenderIndex == 0) { ShowOnboardingError("請選擇性別"); return; }
-        if (onboardingEducationIndex == 0) { ShowOnboardingError("請選擇教育程度"); return; }
+        var birthDate = new DateTime(onboardingYearWheel.Value, onboardingMonthWheel.Value,
+            onboardingDayWheel.Value);
+        string genderCode = onboardingGenderDropdown?.SelectedCode ?? string.Empty;
+        string educationCode = onboardingEducationDropdown?.SelectedCode ?? string.Empty;
+        if (string.IsNullOrEmpty(genderCode)) { ShowOnboardingError("請從下拉選單選擇性別"); return; }
+        if (string.IsNullOrEmpty(educationCode)) { ShowOnboardingError("請從下拉選單選擇教育程度"); return; }
 
         PlayerPrefs.SetString("LTC_ProfileBirthDate", birthDate.ToString("yyyy-MM-dd"));
-        PlayerPrefs.SetString("LTC_ProfileGender", GenderCodes[onboardingGenderIndex]);
-        PlayerPrefs.SetString("LTC_ProfileEducation", EducationCodes[onboardingEducationIndex]);
+        PlayerPrefs.SetString("LTC_ProfileGender", genderCode);
+        PlayerPrefs.SetString("LTC_ProfileEducation", educationCode);
         PlayerPrefs.SetInt(OnboardingCompletedKey, 1);
         PlayerPrefs.Save();
         LTC.Identity.PlayerIdentityService.SyncCurrentProfile();
@@ -882,12 +927,6 @@ private void BuildStatisticsPage(Transform parent)
     {
         if (onboardingPopup != null) onboardingPopup.SetActive(false);
         if (!HasClaimedDailyLoginToday()) OpenDailyLoginPopup();
-    }
-
-    private static int FindCodeIndex(string[] codes, string value)
-    {
-        int index = Array.IndexOf(codes, value);
-        return index < 0 ? 0 : index;
     }
 
     [ContextMenu("Reset First-Time Onboarding")]
@@ -1025,8 +1064,28 @@ private void BuildStatisticsPage(Transform parent)
         SetScoreText(statisticsSpeedScore, profile, CognitiveDomain.ProcessingSpeedVisualSearch);
         SetScoreText(statisticsExecutiveScore, profile, CognitiveDomain.ExecutiveFunctionNumericalReasoning);
         RefreshTrendChart();
-        if (profileText != null) profileText.text = BuildProfileText();
+        if (profileBirthDateValue != null)
+            profileBirthDateValue.text = PlayerPrefs.GetString("LTC_ProfileBirthDate", "尚未填寫");
+        if (profileGenderValue != null)
+            profileGenderValue.text = ProfileGenderLabel(PlayerPrefs.GetString("LTC_ProfileGender", string.Empty));
+        if (profileEducationValue != null)
+            profileEducationValue.text = ProfileEducationLabel(PlayerPrefs.GetString("LTC_ProfileEducation", string.Empty));
+        if (profileCoinValue != null) profileCoinValue.text = CoinData.TotalCoins.ToString();
+        if (profileRecordValue != null)
+            profileRecordValue.text = profile.domains.Sum(item => item.contributingSessions) + " 次";
         UpdateDailyLoginUI();
+    }
+
+    private static string ProfileGenderLabel(string code)
+    {
+        int index = Array.IndexOf(GenderCodes, code);
+        return index > 0 ? GenderLabels[index] : "尚未填寫";
+    }
+
+    private static string ProfileEducationLabel(string code)
+    {
+        int index = Array.IndexOf(EducationCodes, code);
+        return index > 0 ? EducationLabels[index] : "尚未填寫";
     }
 
     private TMP_Text CreateScoreCard(Transform parent, string name, string label, Color accent, float minX,
@@ -1047,6 +1106,25 @@ private void BuildStatisticsPage(Transform parent)
         SetRect(score.rectTransform, new Vector2(0.09f, 0.08f), new Vector2(0.95f, 0.55f), Vector2.zero,
             Vector2.zero);
         return score;
+    }
+
+    private TMP_Text CreateProfileDataRow(Transform parent, string name, string label, float minY)
+    {
+        var row = new GameObject(name, typeof(RectTransform));
+        row.transform.SetParent(parent, false);
+        SetRect(row.GetComponent<RectTransform>(), new Vector2(0.05f, minY), new Vector2(0.95f, minY + 0.14f),
+            Vector2.zero, Vector2.zero);
+        TMP_Text labelText = CreateText(row.transform, "標籤", label, 20, FontStyles.Bold,
+            TextAlignmentOptions.Left);
+        labelText.color = new Color(0.38f, 0.43f, 0.39f);
+        SetRect(labelText.rectTransform, new Vector2(0f, 0f), new Vector2(0.40f, 1f),
+            Vector2.zero, Vector2.zero);
+        TMP_Text valueText = CreateText(row.transform, "數值", "尚未填寫", 21, FontStyles.Bold,
+            TextAlignmentOptions.Left);
+        valueText.color = textColor;
+        SetRect(valueText.rectTransform, new Vector2(0.42f, 0f), new Vector2(1f, 1f),
+            Vector2.zero, Vector2.zero);
+        return valueText;
     }
 
     private void CreateStatisticsFilter(Transform parent, string name, string label, Color color, float minX,
@@ -1161,14 +1239,6 @@ private static void SetScoreText(TMP_Text target, CognitiveProfile profile, Cogn
             score.contributingSessions + " 次";
     }
 
-    private string BuildProfileText()
-    {
-        CognitiveProfile profile = CognitiveAssessmentService.BuildProfile();
-        return "持有金幣　" + CoinData.TotalCoins +
-               "\n\n有效測驗紀錄　" + profile.domains.Sum(item => item.contributingSessions) +
-               " 次\n\n資料用途　觀察自己的長期認知變化\n\n" + profile.disclaimer;
-    }
-
     private static string GetPlayerName()
     {
         string name = PlayerPrefs.GetString("SavedPlayerName", PlayerPrefs.GetString("AccountName", "使用者"));
@@ -1225,6 +1295,85 @@ private static void SetScoreText(TMP_Text target, CognitiveProfile profile, Cogn
         text.color = Color.white;
         Stretch(text.rectTransform, 7f);
         return button;
+    }
+
+    private LTCDateWheelField CreateDateWheel(Transform parent, string name, int min, int max, int initialValue,
+        string suffix, float minX, float maxX)
+    {
+        GameObject root = CreatePanel(parent, name, new Color(1f, 0.995f, 0.975f, 1f),
+            new Vector2(minX, 0.06f), new Vector2(maxX, 0.94f));
+        LTCDateWheelField wheel = root.AddComponent<LTCDateWheelField>();
+        Button increase = CreateButton(root.transform, "增加", "＋", new Color(0.78f, 0.86f, 0.79f, 1f));
+        SetRect(increase.GetComponent<RectTransform>(), new Vector2(0.04f, 0.69f), new Vector2(0.96f, 0.98f),
+            Vector2.zero, Vector2.zero);
+        TMP_Text increaseLabel = increase.GetComponentInChildren<TMP_Text>();
+        if (increaseLabel != null)
+        {
+            increaseLabel.color = textColor;
+            increaseLabel.fontSize = 18;
+            Stretch(increaseLabel.rectTransform, 1f);
+        }
+
+        TMP_Text value = CreateText(root.transform, "數值", initialValue + suffix, 24, FontStyles.Bold,
+            TextAlignmentOptions.Center);
+        value.color = textColor;
+        SetRect(value.rectTransform, new Vector2(0.02f, 0.30f), new Vector2(0.98f, 0.70f), Vector2.zero,
+            Vector2.zero);
+
+        Button decrease = CreateButton(root.transform, "減少", "－", new Color(0.78f, 0.86f, 0.79f, 1f));
+        SetRect(decrease.GetComponent<RectTransform>(), new Vector2(0.04f, 0.02f), new Vector2(0.96f, 0.31f),
+            Vector2.zero, Vector2.zero);
+        TMP_Text decreaseLabel = decrease.GetComponentInChildren<TMP_Text>();
+        if (decreaseLabel != null)
+        {
+            decreaseLabel.color = textColor;
+            decreaseLabel.fontSize = 18;
+            Stretch(decreaseLabel.rectTransform, 1f);
+        }
+        wheel.Configure(increase, decrease, value, min, max, initialValue, suffix);
+        return wheel;
+    }
+
+    private LTCOptionDropdown CreateOptionDropdown(Transform parent, string name, string fieldLabel,
+        string[] labels, string[] codes, Color color, bool openUpward)
+    {
+        var root = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button),
+            typeof(LTCOptionDropdown));
+        root.transform.SetParent(parent, false);
+        root.GetComponent<Image>().color = color;
+        Button header = root.GetComponent<Button>();
+        TMP_Text caption = CreateText(root.transform, "文字", fieldLabel + "：" + labels[0] + "　▼", 23,
+            FontStyles.Bold, TextAlignmentOptions.Center);
+        caption.color = Color.white;
+        Stretch(caption.rectTransform, 8f);
+
+        GameObject menu = CreatePanel(root.transform, "選項清單", surfaceColor, Vector2.zero, Vector2.one);
+        RectTransform menuRect = menu.GetComponent<RectTransform>();
+        float menuHeight = labels.Length * 50f;
+        menuRect.anchorMin = new Vector2(0f, openUpward ? 1f : 0f);
+        menuRect.anchorMax = new Vector2(1f, openUpward ? 1f : 0f);
+        menuRect.pivot = new Vector2(0.5f, openUpward ? 0f : 1f);
+        menuRect.anchoredPosition = new Vector2(0f, openUpward ? 5f : -5f);
+        menuRect.sizeDelta = new Vector2(0f, menuHeight);
+        AddSoftShadow(menu);
+
+        var optionButtons = new List<Button>();
+        for (int index = 0; index < labels.Length; index++)
+        {
+            Color rowColor = index % 2 == 0 ? surfaceColor : new Color(0.94f, 0.96f, 0.91f, 1f);
+            Button option = CreateButton(menu.transform, "選項_" + index, labels[index], rowColor);
+            float top = 1f - index / (float)labels.Length;
+            float bottom = 1f - (index + 1) / (float)labels.Length;
+            SetRect(option.GetComponent<RectTransform>(), new Vector2(0.01f, bottom), new Vector2(0.99f, top),
+                Vector2.zero, Vector2.zero);
+            TMP_Text optionText = option.GetComponentInChildren<TMP_Text>();
+            if (optionText != null) { optionText.color = textColor; optionText.fontSize = 21; }
+            optionButtons.Add(option);
+        }
+
+        LTCOptionDropdown dropdown = root.GetComponent<LTCOptionDropdown>();
+        dropdown.Configure(header, caption, menu, optionButtons, labels, codes, fieldLabel);
+        return dropdown;
     }
 
     private Button CreateCircleButton(Transform parent, string name, Color color)
