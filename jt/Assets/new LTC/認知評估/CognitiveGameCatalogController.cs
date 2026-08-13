@@ -350,7 +350,7 @@ public class CognitiveGameCatalogController : MonoBehaviour
         onboardingDayWheel = CreateDateWheel(dateWheel.transform, "日期", 1, 31, 1, " 日", 0.705f, 0.99f);
 
         onboardingGenderDropdown = CreateOptionDropdown(card.transform, "性別下拉", "性別", GenderLabels,
-            GenderCodes, new Color(0.48f, 0.67f, 0.76f, 1f), false);
+            GenderCodes, new Color(0.48f, 0.67f, 0.76f, 1f), true);
         SetRect(onboardingGenderDropdown.GetComponent<RectTransform>(), new Vector2(0.44f, 0.36f),
             new Vector2(0.94f, 0.45f), Vector2.zero, Vector2.zero);
         onboardingEducationDropdown = CreateOptionDropdown(card.transform, "教育程度下拉", "教育程度",

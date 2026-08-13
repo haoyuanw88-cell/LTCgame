@@ -61,9 +61,6 @@ public sealed class LTCDateWheelField : MonoBehaviour, IScrollHandler, IBeginDra
 
     private void OnDestroy()
     {
-        if (!listenersBound) return;
-        if (increaseButton != null) increaseButton.onClick.RemoveListener(Increase);
-        if (decreaseButton != null) decreaseButton.onClick.RemoveListener(Decrease);
         listenersBound = false;
     }
 
@@ -103,9 +100,23 @@ public sealed class LTCDateWheelField : MonoBehaviour, IScrollHandler, IBeginDra
     private void BindListeners()
     {
         if (listenersBound) return;
-        if (increaseButton != null) increaseButton.onClick.AddListener(Increase);
-        if (decreaseButton != null) decreaseButton.onClick.AddListener(Decrease);
+        ConfigureRepeatButton(increaseButton, 1);
+        ConfigureRepeatButton(decreaseButton, -1);
         listenersBound = true;
+    }
+
+    private void ConfigureRepeatButton(Button button, int direction)
+    {
+        if (button == null) return;
+        LTCPressRepeatButton repeater = button.GetComponent<LTCPressRepeatButton>();
+        if (repeater == null) repeater = button.gameObject.AddComponent<LTCPressRepeatButton>();
+        repeater.Configure(this, direction);
+    }
+
+    public void Step(int direction)
+    {
+        if (direction > 0) Increase();
+        else if (direction < 0) Decrease();
     }
 
     private void Increase()

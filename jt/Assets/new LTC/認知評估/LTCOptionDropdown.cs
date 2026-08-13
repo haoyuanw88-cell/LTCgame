@@ -36,6 +36,7 @@ public sealed class LTCOptionDropdown : MonoBehaviour
         fieldLabel = title ?? string.Empty;
         selectedIndex = Mathf.Clamp(selectedIndex, 0, Mathf.Max(0, labels.Count - 1));
         BindListeners();
+        ForceOpenUpward();
         Close();
         RefreshCaption();
     }
@@ -49,6 +50,7 @@ public sealed class LTCOptionDropdown : MonoBehaviour
     private void Awake()
     {
         BindListeners();
+        ForceOpenUpward();
         Close();
         RefreshCaption();
     }
@@ -95,9 +97,22 @@ public sealed class LTCOptionDropdown : MonoBehaviour
         if (shouldOpen)
         {
             openDropdown = this;
+            transform.SetAsLastSibling();
+            ForceOpenUpward();
             optionsPanel.transform.SetAsLastSibling();
         }
         else if (openDropdown == this) openDropdown = null;
+    }
+
+    private void ForceOpenUpward()
+    {
+        if (optionsPanel == null) return;
+        RectTransform menuRect = optionsPanel.GetComponent<RectTransform>();
+        if (menuRect == null) return;
+        menuRect.anchorMin = new Vector2(0f, 1f);
+        menuRect.anchorMax = new Vector2(1f, 1f);
+        menuRect.pivot = new Vector2(0.5f, 0f);
+        menuRect.anchoredPosition = new Vector2(0f, 5f);
     }
 
     private void Close()
