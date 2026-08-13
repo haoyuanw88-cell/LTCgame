@@ -1,0 +1,68 @@
+@host = http://localhost:5077
+
+GET {{host}}/health
+Accept: application/json
+
+### 建立或更新匿名受測者
+POST {{host}}/api/v1/participants/resolve
+Content-Type: application/json
+
+{
+  "anonymousCode": "demo-001",
+  "displayName": "示範使用者",
+  "birthYear": 1950,
+  "educationBand": "7-12"
+}
+
+### 上傳一次顏色文字判斷
+POST {{host}}/api/v1/assessments
+Content-Type: application/json
+
+{
+  "sessionId": "30000000-0000-0000-0000-000000000001",
+  "anonymousCode": "demo-001",
+  "gameCode": "stroop_color_match",
+  "taskVersion": "1.0.0",
+  "schemaVersion": "1.0",
+  "startedAtUtc": "2026-07-20T05:00:00Z",
+  "endedAtUtc": "2026-07-20T05:01:00Z",
+  "completionStatus": "completed",
+  "clientTimezoneOffsetMinutes": 480,
+  "device": {
+    "installationId": "editor-demo",
+    "platform": "WindowsEditor",
+    "model": "Development PC",
+    "screenWidth": 1920,
+    "screenHeight": 1080,
+    "dpi": 96
+  },
+  "trials": [
+    {
+      "trialIndex": 0,
+      "trialType": "incongruent",
+      "stimulusJson": "{\"word\":\"紅\",\"ink\":\"blue\"}",
+      "expectedResponse": "blue",
+      "actualResponse": "blue",
+      "isCorrect": true,
+      "reactionTimeMs": 920,
+      "presentationDurationMs": 3000,
+      "occurredAtUtc": "2026-07-20T05:00:05Z"
+    }
+  ],
+  "metrics": [
+    {
+      "metricCode": "accuracy",
+      "value": 1.0,
+      "unit": "ratio",
+      "calculationVersion": "1.0.0",
+      "domainCode": "attention_inhibition",
+      "qualityFlag": "valid"
+    }
+  ]
+}
+
+### 最近紀錄
+GET {{host}}/api/v1/assessments/participants/demo-001/history?limit=30
+
+### 30 天趨勢
+GET {{host}}/api/v1/assessments/participants/demo-001/trends?days=30&domain=attention_inhibition

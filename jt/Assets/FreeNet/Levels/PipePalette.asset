@@ -1,0 +1,105 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ddb6f19776ec04349a050b3b940c89a8, type: 3}
+  m_Name: PipePalette
+  m_EditorClassIdentifier: Assembly-CSharp::PipePalette
+  brushes:
+  - displayName: pipeGrey_24_0 (3)
+    isStartingPipe: 0
+    isEndingPipe: 0
+    openings: 00000101
+    emptySprite: {fileID: 812786527927793249, guid: 3e9b384d1277dd84a9cec4fa2951345a, type: 3}
+    waterSprite: {fileID: 7554396497424591893, guid: dacc20aa5c6a6d340be2d3a84812e51c, type: 3}
+    scale: {x: 1, y: 1, z: 1}
+    rotationZ: 0
+    material: {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+    sortingLayerName: Default
+    sortingOrder: 0
+    hasCollider: 1
+    colliderOffset: {x: 0, y: 0}
+    colliderSize: {x: 1.76, y: 1.77}
+    rotateSound: {fileID: 8300000, guid: 3ad8e98f4a87dd24e9ae1b25abf7dff8, type: 3}
+  - displayName: pipeGrey_25_0 (5)
+    isStartingPipe: 0
+    isEndingPipe: 0
+    openings: 01000100
+    emptySprite: {fileID: 2994537891560891130, guid: b772ee98ae45b9e47a79a7aefb8ec127, type: 3}
+    waterSprite: {fileID: 4898506693494871268, guid: 18e786512771bde4db8ef9e347cf0929, type: 3}
+    scale: {x: 1, y: 1, z: 1}
+    rotationZ: 0
+    material: {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+    sortingLayerName: Default
+    sortingOrder: 0
+    hasCollider: 0
+    colliderOffset: {x: 0, y: 0}
+    colliderSize: {x: 1, y: 1}
+    rotateSound: {fileID: 0}
+  - displayName: pipeGrey_42_0
+    isStartingPipe: 1
+    isEndingPipe: 0
+    openings: 00010000
+    emptySprite: {fileID: -1513954597998868543, guid: 053d749124808c944aff770efeec278f, type: 3}
+    waterSprite: {fileID: -1513954597998868543, guid: 053d749124808c944aff770efeec278f, type: 3}
+    scale: {x: 1, y: 1, z: 1}
+    rotationZ: 0
+    material: {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+    sortingLayerName: Default
+    sortingOrder: 0
+    hasCollider: 1
+    colliderOffset: {x: 0, y: 0}
+    colliderSize: {x: 0.8, y: 0.8}
+    rotateSound: {fileID: 0}
+  - displayName: pipeGrey_26_0
+    isStartingPipe: 0
+    isEndingPipe: 0
+    openings: 00010001
+    emptySprite: {fileID: 268071627486457569, guid: e60127297a16e374fb98855185546201, type: 3}
+    waterSprite: {fileID: 5667295633173947638, guid: 42e13692c9b3d76438b21a6e4ecb0105, type: 3}
+    scale: {x: 1, y: 1, z: 1}
+    rotationZ: 0
+    material: {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+    sortingLayerName: Default
+    sortingOrder: 0
+    hasCollider: 1
+    colliderOffset: {x: 0, y: 0}
+    colliderSize: {x: 2.35, y: 1.18}
+    rotateSound: {fileID: 8300000, guid: 3ad8e98f4a87dd24e9ae1b25abf7dff8, type: 3}
+  - displayName: pipeGrey_27_0 (1)
+    isStartingPipe: 0
+    isEndingPipe: 1
+    openings: 01000101
+    emptySprite: {fileID: -7418068239543133232, guid: a30b2747169f8a544991d0779964ca51, type: 3}
+    waterSprite: {fileID: -4421439683257464380, guid: 7d7283e0cf0653e4f83608c443211ec9, type: 3}
+    scale: {x: 1, y: 1, z: 1}
+    rotationZ: 270
+    material: {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+    sortingLayerName: Default
+    sortingOrder: 0
+    hasCollider: 1
+    colliderOffset: {x: 0, y: 0}
+    colliderSize: {x: 0.8, y: 0.8}
+    rotateSound: {fileID: 0}
+  - displayName: pipeGrey_23_0
+    isStartingPipe: 0
+    isEndingPipe: 0
+    openings: 00010100
+    emptySprite: {fileID: -5097051364385556437, guid: f8a446187332eb0458edf1426fe37aa1, type: 3}
+    waterSprite: {fileID: 6127933003198597481, guid: b0834d03e64cfd0458caafc9863e91c3, type: 3}
+    scale: {x: 1, y: 1, z: 1}
+    rotationZ: 0
+    material: {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+    sortingLayerName: Default
+    sortingOrder: 0
+    hasCollider: 1
+    colliderOffset: {x: 0, y: 0}
+    colliderSize: {x: 1.76, y: 1.76}
+    rotateSound: {fileID: 8300000, guid: 3ad8e98f4a87dd24e9ae1b25abf7dff8, type: 3}

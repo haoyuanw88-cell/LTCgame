@@ -44,6 +44,9 @@
 ExportedObj/
 .consulo/
 *.csproj
+!backend/**/*.csproj
+backend/**/bin/
+backend/**/obj/
 *.unityproj
 *.sln
 *.slnx

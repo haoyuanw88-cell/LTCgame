@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 20f2fd61d43b483ba93442eb6cfc37cf
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - _bootstrapPrefab: {instanceID: 0}
+  - screen: {instanceID: 0}
+  - _handLandmarkerResultAnnotationController: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
