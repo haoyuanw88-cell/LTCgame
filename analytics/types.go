@@ -72,14 +72,60 @@ type HeartbeatResponse struct {
 
 type DomainAverage struct {
 	Domain       string  `json:"domain"`
+	Label        string  `json:"label"`
 	AverageScore float64 `json:"averageScore"`
 	RecordCount  int     `json:"recordCount"`
+	Trend        string  `json:"trend"`
+	Status       string  `json:"status"`
+	HasInvalid   bool    `json:"hasInvalid"`
+}
+
+type DashboardTrendPoint struct {
+	Date     string `json:"date"`
+	Sessions int    `json:"sessions"`
+	Score    int    `json:"score"`
+}
+
+type DashboardTask struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Owner    string `json:"owner"`
+	Priority string `json:"priority"`
+	Due      string `json:"due"`
+	Status   string `json:"status"`
+}
+
+type DashboardGameStatus struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Domain         string `json:"domain"`
+	Sessions       int    `json:"sessions"`
+	CompletionRate int    `json:"completionRate"`
+	Status         string `json:"status"`
+	NextAction     string `json:"nextAction"`
+}
+
+type DashboardRecentSession struct {
+	PlayerID string `json:"playerId"`
+	Game     string `json:"game"`
+	Score    int    `json:"score"`
+	Duration string `json:"duration"`
+	PlayedAt string `json:"playedAt"`
+	Status   string `json:"status"`
 }
 
 type DashboardOverview struct {
-	OnlineUsers       int             `json:"onlineUsers"`
-	TotalPlayers      int             `json:"totalPlayers"`
-	CompletedSessions int             `json:"completedSessions"`
-	GeneratedAtUTC    string          `json:"generatedAtUtc"`
-	CognitiveAverages []DomainAverage `json:"cognitiveAverages"`
+	OnlineUsers       int                      `json:"onlineUsers"`
+	TotalPlayers      int                      `json:"totalPlayers"`
+	CompletedSessions int                      `json:"completedSessions"`
+	TodaySessions     int                      `json:"todaySessions"`
+	ActiveAlerts      int                      `json:"activeAlerts"`
+	AverageScore      int                      `json:"averageScore"`
+	CompletionRate    float64                  `json:"completionRate"`
+	GeneratedAtUTC    string                   `json:"generatedAtUtc"`
+	CognitiveAverages []DomainAverage          `json:"cognitiveAverages"`
+	WeeklyTrend       []DashboardTrendPoint    `json:"weeklyTrend"`
+	Tasks             []DashboardTask          `json:"tasks"`
+	Games             []DashboardGameStatus    `json:"games"`
+	RecentSessions    []DashboardRecentSession `json:"recentSessions"`
 }
