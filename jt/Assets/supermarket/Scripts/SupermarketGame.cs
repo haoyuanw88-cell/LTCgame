@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using LTCCognitiveAssessment;
 using UnityEngine;
 
 [Serializable]
@@ -46,8 +47,13 @@ public class SupermarketGame : MonoBehaviour
     private float startTime;
     private float clearTime;
     private int failures;
+    private int successfulPurchases;
+    private int trialIndex;
+    private int randomSeed;
     private bool cleared;
     private bool gameStarted;
+    private bool assessmentCompleted;
+    private string assessmentSessionId;
     private GameObject tutorialPanel;
     private SpriteRenderer panelRenderer;
     private GUIStyle listStyle;
@@ -77,7 +83,6 @@ public class SupermarketGame : MonoBehaviour
         SetupTutorial();
         AddClickTargets();
         StartMusic();
-        PlayHistoryDatabase.EnsureCreated();
 
         if (tutorialPanel == null)
             StartGame();
@@ -108,6 +113,13 @@ public class SupermarketGame : MonoBehaviour
 
         gameStarted = true;
         startTime = Time.time;
+        randomSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+        trialIndex = 0;
+        successfulPurchases = 0;
+        assessmentCompleted = false;
+        assessmentSessionId = CognitiveAssessmentService.BeginGame(
+            "supermarket_shopping",
+            CognitiveProtocolRegistry.ProtocolVersion);
         ShowShoppingPanel();
 
         if (tutorialPanel != null)
@@ -213,9 +225,12 @@ public class SupermarketGame : MonoBehaviour
         if (match == null)
         {
             failures++;
+            RecordPurchaseTrial(product, false, "unlisted_or_extra_product");
             return;
         }
 
+        RecordPurchaseTrial(product, true, "");
+        successfulPurchases++;
         match.remaining--;
 
         bool allDone = requiredProducts.Count > 0;
@@ -232,8 +247,87 @@ public class SupermarketGame : MonoBehaviour
         {
             cleared = true;
             clearTime = Time.time - startTime;
-            PlayHistoryDatabase.SavePlaySession(clearTime, failures);
+            CompleteAssessment();
         }
+    }
+
+    private void RecordPurchaseTrial(SpriteRenderer product, bool correct, string errorType)
+    {
+        if (string.IsNullOrEmpty(assessmentSessionId))
+            return;
+
+        trialIndex++;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = trialIndex,
+            roundIndex = 1,
+            stepIndex = trialIndex,
+            eventKind = "response",
+            randomSeed = randomSeed,
+            difficulty = Mathf.Max(1, requiredProducts.Count),
+            stimulusCount = requiredProducts.Count,
+            condition = "shopping_list_selection",
+            stimulus = BuildRemainingListSnapshot(),
+            expectedAnswer = "required_product",
+            userAnswer = ProductName(product),
+            outcome = correct ? TrialOutcome.Correct : TrialOutcome.Incorrect,
+            reactionTimeMs = Mathf.RoundToInt(Mathf.Max(0f, Time.time - startTime) * 1000f),
+            errorType = errorType
+        });
+    }
+
+    private void CompleteAssessment()
+    {
+        if (assessmentCompleted || string.IsNullOrEmpty(assessmentSessionId))
+            return;
+
+        assessmentCompleted = true;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = ++trialIndex,
+            roundIndex = 1,
+            stepIndex = trialIndex,
+            eventKind = "round_summary",
+            randomSeed = randomSeed,
+            difficulty = Mathf.Max(1, requiredProducts.Count),
+            stimulusCount = requiredProducts.Count,
+            condition = "shopping_completion",
+            stimulus = "required=" + requiredProducts.Count + "|successes=" + successfulPurchases + "|failures=" + failures,
+            expectedAnswer = "complete_list",
+            userAnswer = "complete_list",
+            outcome = TrialOutcome.Correct,
+            reactionTimeMs = Mathf.RoundToInt(clearTime * 1000f),
+            roundElapsedMs = Mathf.RoundToInt(clearTime * 1000f),
+            actionCount = successfulPurchases + failures,
+            errorCount = failures
+        });
+        CognitiveAssessmentService.CompleteGame(
+            assessmentSessionId,
+            CognitiveDomain.WorkingMemory,
+            0f,
+            requiredProducts.Count);
+    }
+
+    private string BuildRemainingListSnapshot()
+    {
+        List<string> items = new List<string>();
+        foreach (ShoppingRequirement item in requiredProducts)
+        {
+            if (item == null || item.productImage == null)
+                continue;
+            items.Add(item.productImage.name + ":" + item.remaining);
+        }
+
+        return string.Join(",", items);
+    }
+
+    private static string ProductName(SpriteRenderer product)
+    {
+        if (product == null)
+            return "";
+        if (product.sprite != null)
+            return product.sprite.name;
+        return product.name;
     }
 
     private void AddClickTargets()

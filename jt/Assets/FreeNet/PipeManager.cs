@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using LTCCognitiveAssessment;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -53,8 +54,12 @@ public class PipeManager : MonoBehaviour
     private GameObject tutorialFirstPage;
     private GameObject tutorialSecondPage;
     private int tutorialPageIndex;
+    private int trialIndex;
+    private int randomSeed;
     private bool tutorialActive;
     private bool endpointHintPendingAfterTutorial;
+    private bool assessmentCompleted;
+    private string assessmentSessionId;
 
     public bool IsTutorialActive => tutorialActive;
 
@@ -127,6 +132,10 @@ public class PipeManager : MonoBehaviour
         isGameOver = false;
         moveCount = 0;
         elapsedTime = 0f;
+        trialIndex = 0;
+        randomSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+        assessmentCompleted = false;
+        assessmentSessionId = null;
 
         if (winUI != null)
         {
@@ -245,7 +254,47 @@ public class PipeManager : MonoBehaviour
     {
         if (isGameOver) return;
         moveCount++;
+        RecordPipeMove();
         UpdateUI();
+    }
+
+    private void StartAssessmentIfNeeded()
+    {
+        if (!string.IsNullOrEmpty(assessmentSessionId))
+        {
+            return;
+        }
+
+        assessmentSessionId = CognitiveAssessmentService.BeginGame(
+            "pipe_connection",
+            CognitiveProtocolRegistry.ProtocolVersion);
+    }
+
+    private void RecordPipeMove()
+    {
+        if (string.IsNullOrEmpty(assessmentSessionId))
+        {
+            return;
+        }
+
+        trialIndex++;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = trialIndex,
+            roundIndex = 1,
+            stepIndex = moveCount,
+            eventKind = "selection",
+            randomSeed = randomSeed,
+            difficulty = Mathf.Max(1, width * height),
+            stimulusCount = width * height,
+            condition = "pipe_rotation",
+            stimulus = "moves=" + moveCount,
+            expectedAnswer = "connect_start_to_end",
+            userAnswer = "rotate_pipe",
+            outcome = TrialOutcome.ValidAction,
+            reactionTimeMs = Mathf.RoundToInt(elapsedTime * 1000f),
+            actionCount = moveCount
+        });
     }
 
     // ⭐ 新增：即時更新步數 UI
@@ -356,7 +405,9 @@ public class PipeManager : MonoBehaviour
 
     void WinGame()
     {
+        StartAssessmentIfNeeded();
         isGameOver = true;
+        CompleteAssessment();
         if (myAudioSource != null && winSound != null) myAudioSource.PlayOneShot(winSound);
         
         // ⭐ 新增：過關時計算最終時間並顯示在結算畫面上
@@ -373,6 +424,39 @@ public class PipeManager : MonoBehaviour
             winUI.SetActive(true);
             StartCoroutine(PopUpEffect(winUI.transform));
         }
+    }
+
+    private void CompleteAssessment()
+    {
+        if (assessmentCompleted || string.IsNullOrEmpty(assessmentSessionId))
+        {
+            return;
+        }
+
+        assessmentCompleted = true;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = ++trialIndex,
+            roundIndex = 1,
+            stepIndex = moveCount,
+            eventKind = "round_summary",
+            randomSeed = randomSeed,
+            difficulty = Mathf.Max(1, width * height),
+            stimulusCount = width * height,
+            condition = "pipe_completion",
+            stimulus = "width=" + width + "|height=" + height,
+            expectedAnswer = "connected",
+            userAnswer = "connected",
+            outcome = TrialOutcome.Correct,
+            reactionTimeMs = Mathf.RoundToInt(elapsedTime * 1000f),
+            roundElapsedMs = Mathf.RoundToInt(elapsedTime * 1000f),
+            actionCount = moveCount
+        });
+        CognitiveAssessmentService.CompleteGame(
+            assessmentSessionId,
+            CognitiveDomain.VisuospatialAbility,
+            0f,
+            moveCount);
     }
 
     IEnumerator PopUpEffect(Transform target)
@@ -479,6 +563,7 @@ public class PipeManager : MonoBehaviour
         if (tutorialBackground == null && tutorialFirstPage == null && tutorialSecondPage == null)
         {
             tutorialActive = false;
+            StartAssessmentIfNeeded();
             return;
         }
 
@@ -519,6 +604,11 @@ public class PipeManager : MonoBehaviour
         if (endpointHintPendingAfterTutorial)
         {
             ShowEndpointHintWhenReady();
+        }
+
+        if (!isGameOver)
+        {
+            StartAssessmentIfNeeded();
         }
     }
 

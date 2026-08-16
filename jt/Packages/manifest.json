@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "com.coplaydev.unity-mcp": "file:D:/MCP/unity-mcp-beta/MCPForUnity",
+    "com.coplaydev.unity-mcp": "file:com.coplaydev.unity-mcp",
     "com.github.homuler.mediapipe": "file:com.github.homuler.mediapipe",
     "com.unity.2d.aseprite": "4.0.1",
     "com.unity.ai.inference": "2.6.1",

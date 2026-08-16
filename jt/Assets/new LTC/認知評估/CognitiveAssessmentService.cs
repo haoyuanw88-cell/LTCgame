@@ -108,6 +108,58 @@ namespace LTCCognitiveAssessment
                     MinimumReactionTimeMs = 500,
                     MaximumReactionTimeMs = 120000,
                     MinimumSessionDurationMs = 45000
+                },
+                ["gopher_reaction"] = new CognitiveAssessmentProtocol
+                {
+                    GameId = "gopher_reaction",
+                    ProtocolId = "LTC-PS-GOPHER-01",
+                    TaskVersion = ProtocolVersion,
+                    MinimumValidTrials = 5,
+                    MinimumReactionTimeMs = 100,
+                    MaximumReactionTimeMs = 10000,
+                    MinimumSessionDurationMs = 10000
+                },
+                ["card_memory_battle"] = new CognitiveAssessmentProtocol
+                {
+                    GameId = "card_memory_battle",
+                    ProtocolId = "LTC-WM-CARDMATCH-01",
+                    TaskVersion = ProtocolVersion,
+                    MinimumValidTrials = 3,
+                    MinimumReactionTimeMs = 200,
+                    MaximumReactionTimeMs = 120000,
+                    MinimumSessionDurationMs = 10000
+                },
+                ["pipe_connection"] = new CognitiveAssessmentProtocol
+                {
+                    GameId = "pipe_connection",
+                    ProtocolId = "LTC-VS-PIPE-01",
+                    TaskVersion = ProtocolVersion,
+                    UsesRoundSummaries = true,
+                    MinimumValidTrials = 1,
+                    MinimumReactionTimeMs = 500,
+                    MaximumReactionTimeMs = 300000,
+                    MinimumSessionDurationMs = 10000
+                },
+                ["supermarket_shopping"] = new CognitiveAssessmentProtocol
+                {
+                    GameId = "supermarket_shopping",
+                    ProtocolId = "LTC-WM-SHOPPING-01",
+                    TaskVersion = ProtocolVersion,
+                    UsesRoundSummaries = true,
+                    MinimumValidTrials = 1,
+                    MinimumReactionTimeMs = 500,
+                    MaximumReactionTimeMs = 300000,
+                    MinimumSessionDurationMs = 10000
+                },
+                ["true_false_life_quiz"] = new CognitiveAssessmentProtocol
+                {
+                    GameId = "true_false_life_quiz",
+                    ProtocolId = "LTC-LANG-LIFEQUIZ-01",
+                    TaskVersion = ProtocolVersion,
+                    MinimumValidTrials = 8,
+                    MinimumReactionTimeMs = 200,
+                    MaximumReactionTimeMs = 60000,
+                    MinimumSessionDurationMs = 10000
                 }
             };
 

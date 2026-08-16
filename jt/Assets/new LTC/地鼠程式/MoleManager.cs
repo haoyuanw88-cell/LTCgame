@@ -1,4 +1,5 @@
 using System.Collections;
+using LTCCognitiveAssessment;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -48,6 +49,10 @@ public class MoleManager : MonoBehaviour
     private int shotCount = 0;
     private int bombHitCount = 0;
     private int earnedCoins = 0;
+    private int trialIndex = 0;
+    private int randomSeed;
+    private float gameStartTime;
+    private string assessmentSessionId;
 
     private bool gameRunning = false;
     private bool gameEnded = false;
@@ -143,7 +148,19 @@ public class MoleManager : MonoBehaviour
         }
 
         timer = 0f;
+        StartAssessment();
         gameRunning = true;
+    }
+
+    void StartAssessment()
+    {
+        randomSeed = Random.Range(int.MinValue, int.MaxValue);
+        gameStartTime = Time.time;
+        trialIndex = 0;
+        assessmentSessionId = CognitiveAssessmentService.BeginGame(
+            "gopher_reaction",
+            CognitiveProtocolRegistry.ProtocolVersion,
+            inputMethod: "hand_tracking_or_mouse");
     }
 
     void SpawnRandomMole()
@@ -181,6 +198,7 @@ public class MoleManager : MonoBehaviour
 
         Debug.DrawRay(ray.origin, ray.direction * 100, Color.yellow, 0.5f);
 
+        bool recordedShot = false;
         if (Physics.Raycast(ray, out hit))
         {
             Mole m = hit.collider.GetComponent<Mole>();
@@ -196,6 +214,7 @@ public class MoleManager : MonoBehaviour
                 {
                     m.OnHit();
                     bombHitCount++;
+                    RecordGopherTrial("bomb", "gopher", TrialOutcome.Incorrect, "bomb_hit", false);
                 }
                 else
                 {
@@ -203,6 +222,7 @@ public class MoleManager : MonoBehaviour
 
                     AddScore(scorePerHit);
                     hitCount++;
+                    RecordGopherTrial("gopher", "gopher", TrialOutcome.Correct, "", false);
 
                     if (score >= targetScore)
                     {
@@ -211,7 +231,13 @@ public class MoleManager : MonoBehaviour
                 }
 
                 lastMediaPipeHitTime = Time.time;
+                recordedShot = true;
             }
+        }
+
+        if (!recordedShot)
+        {
+            RecordGopherTrial("empty", "gopher", TrialOutcome.Incorrect, "empty_hit", false);
         }
     }
 
@@ -223,6 +249,7 @@ public class MoleManager : MonoBehaviour
         if (!mole.IsBomb)
         {
             missCount++;
+            RecordGopherTrial("gopher", "gopher", TrialOutcome.Omitted, "missed_visible_mole", true);
         }
     }
 
@@ -253,6 +280,11 @@ public class MoleManager : MonoBehaviour
         float accuracy = shotCount > 0
             ? (float)hitCount / shotCount * 100f
             : 0f;
+        CognitiveAssessmentService.CompleteGame(
+            assessmentSessionId,
+            CognitiveDomain.ProcessingSpeedVisualSearch,
+            0f,
+            score);
 
         if (resultPanel != null)
         {
@@ -284,5 +316,35 @@ public class MoleManager : MonoBehaviour
                 moles[i].Hide();
             }
         }
+    }
+
+    void RecordGopherTrial(string stimulus, string expectedAnswer, TrialOutcome outcome, string errorType, bool timedOut)
+    {
+        if (string.IsNullOrEmpty(assessmentSessionId)) return;
+
+        float previousActionTime = lastMediaPipeHitTime > 0f ? lastMediaPipeHitTime : gameStartTime;
+        int reactionTimeMs = timedOut
+            ? Mathf.RoundToInt(moleVisibleTime * 1000f)
+            : Mathf.RoundToInt(Mathf.Clamp(Time.time - previousActionTime, 0.1f, 10f) * 1000f);
+
+        trialIndex++;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = trialIndex,
+            roundIndex = trialIndex,
+            stepIndex = 1,
+            eventKind = "response",
+            randomSeed = randomSeed,
+            difficulty = Mathf.Max(1, Mathf.RoundToInt(1f / Mathf.Max(0.1f, spawnInterval))),
+            stimulusCount = moles != null ? moles.Length : 0,
+            condition = "reaction_hit",
+            stimulus = stimulus + "|score=" + score + "|shots=" + shotCount,
+            expectedAnswer = expectedAnswer,
+            userAnswer = timedOut ? "" : stimulus,
+            outcome = outcome,
+            reactionTimeMs = reactionTimeMs,
+            timedOut = timedOut,
+            errorType = errorType
+        });
     }
 }

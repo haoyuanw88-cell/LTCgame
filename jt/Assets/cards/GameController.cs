@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using LTCCognitiveAssessment;
 using TMPro;
 using UnityEngine.Animations;
 using UnityEngine;
@@ -75,13 +76,21 @@ public class GameController : MonoBehaviour
     private int roundHealPoints;     
     private int mismatchCount;
     private int playerFlipCount;
+    private int trialIndex;
+    private int roundIndex;
+    private int pairAttemptCount;
+    private int matchedPairCount;
+    private int randomSeed;
     private float totalPlayerFlipTime;
     private float flipTimerStartTime;
+    private float pairStartTime;
     private bool isProcessing;
     private bool battleEnded;
     private bool tutorialShowing;
     private bool gameFlowStarted;
     private bool isTimingPlayerFlip;
+    private bool assessmentCompleted;
+    private string assessmentSessionId;
     private readonly List<Card> allCards = new List<Card>();
     private readonly List<Card> revealedCards = new List<Card>();
 
@@ -257,6 +266,8 @@ public class GameController : MonoBehaviour
     public void CardClicked(Card card)
     {
         if (!CanClickCards() || revealedCards.Contains(card)) return;
+        if (revealedCards.Count == 0)
+            pairStartTime = Time.time;
         RecordPlayerFlipTime();
 
         revealedCards.Add(card);
@@ -274,10 +285,12 @@ public class GameController : MonoBehaviour
         if (c1.GetCardID() == c2.GetCardID())
         {
             PlaySound(matchSuccessSound);
+            RecordCardPairTrial(c1, c2, true);
 
             int val = c1.GetPointValue(); 
             if (c1.GetRewardType() == CardRewardType.Heal) roundHealPoints += val; 
             else roundAttackPoints += val; 
+            matchedPairCount++;
             
             UpdateBattleUI("配對成功！繼續翻牌"); 
             
@@ -297,6 +310,7 @@ public class GameController : MonoBehaviour
         {
             PlaySound(matchFailSound);
             mismatchCount++;
+            RecordCardPairTrial(c1, c2, false);
             yield return new WaitForSeconds(0.3f);
             c1.TurnBack(); 
             c2.TurnBack();
@@ -520,9 +534,17 @@ public class GameController : MonoBehaviour
     {
         mismatchCount = 0;
         playerFlipCount = 0;
+        trialIndex = 0;
+        roundIndex = 0;
+        pairAttemptCount = 0;
+        matchedPairCount = 0;
+        randomSeed = 0;
         totalPlayerFlipTime = 0f;
         flipTimerStartTime = 0f;
+        pairStartTime = 0f;
         isTimingPlayerFlip = false;
+        assessmentCompleted = false;
+        assessmentSessionId = null;
     }
 
     private void StartPlayerFlipTimer()
@@ -684,7 +706,42 @@ public class GameController : MonoBehaviour
         }
 
         gameFlowStarted = true;
+        StartCardAssessment();
         StartCoroutine(StartNewRound());
+    }
+
+    private void StartCardAssessment()
+    {
+        randomSeed = Random.Range(int.MinValue, int.MaxValue);
+        roundIndex = 1;
+        assessmentSessionId = CognitiveAssessmentService.BeginGame(
+            "card_memory_battle",
+            CognitiveProtocolRegistry.ProtocolVersion);
+    }
+
+    private void RecordCardPairTrial(Card firstCard, Card secondCard, bool matched)
+    {
+        if (string.IsNullOrEmpty(assessmentSessionId)) return;
+
+        trialIndex++;
+        pairAttemptCount++;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = trialIndex,
+            roundIndex = roundIndex,
+            stepIndex = pairAttemptCount,
+            eventKind = "response",
+            randomSeed = randomSeed,
+            difficulty = rows * columns,
+            stimulusCount = allCards.Count,
+            condition = "card_pair_match",
+            stimulus = firstCard.GetCardID() + "|" + secondCard.GetCardID(),
+            expectedAnswer = "same_card_id",
+            userAnswer = matched ? "same_card_id" : "different_card_id",
+            outcome = matched ? TrialOutcome.Correct : TrialOutcome.Incorrect,
+            reactionTimeMs = Mathf.RoundToInt(Mathf.Max(0f, Time.time - pairStartTime) * 1000f),
+            errorType = matched ? "" : "memory_mismatch"
+        });
     }
 
     private void UpdateTeachingPage()
@@ -945,7 +1002,45 @@ public class GameController : MonoBehaviour
         return null;
     }
 
-    private void EndBattle(bool win) { battleEnded = true; UpdateBattleUI(win ? "勝利！" : "戰敗..."); }
+    private void EndBattle(bool win)
+    {
+        if (battleEnded) return;
+
+        battleEnded = true;
+        UpdateBattleUI(win ? "勝利！" : "戰敗...");
+        CompleteCardAssessment(win);
+    }
+
+    private void CompleteCardAssessment(bool win)
+    {
+        if (assessmentCompleted || string.IsNullOrEmpty(assessmentSessionId)) return;
+
+        assessmentCompleted = true;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = ++trialIndex,
+            roundIndex = roundIndex,
+            stepIndex = pairAttemptCount,
+            eventKind = "summary",
+            randomSeed = randomSeed,
+            difficulty = rows * columns,
+            stimulusCount = allCards.Count,
+            condition = "battle_result",
+            stimulus = "matchedPairs=" + matchedPairCount + "|mismatches=" + mismatchCount,
+            expectedAnswer = "defeat_enemy",
+            userAnswer = win ? "defeat_enemy" : "player_defeated",
+            outcome = win ? TrialOutcome.Correct : TrialOutcome.Incorrect,
+            reactionTimeMs = Mathf.RoundToInt(GetAverageFlipTime() * 1000f),
+            errorCount = mismatchCount,
+            actionCount = pairAttemptCount,
+            errorType = win ? "" : "battle_lost"
+        });
+        CognitiveAssessmentService.CompleteGame(
+            assessmentSessionId,
+            CognitiveDomain.WorkingMemory,
+            0f,
+            rows * columns);
+    }
 
     private struct CardSetup {
         public int id; public Sprite face; public Sprite back; public CardRewardType type; public int val;

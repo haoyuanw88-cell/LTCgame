@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using LTCCognitiveAssessment;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -54,7 +55,12 @@ public class SeniorTrueFalseQuiz : MonoBehaviour
     private Font quizFont;
     private int currentQuestion;
     private int score;
+    private int trialIndex;
+    private int randomSeed;
+    private float questionStartTime;
     private bool acceptingAnswer;
+    private bool assessmentCompleted;
+    private string assessmentSessionId;
 
     private void Start()
     {
@@ -168,6 +174,12 @@ public class SeniorTrueFalseQuiz : MonoBehaviour
     {
         currentQuestion = 0;
         score = 0;
+        trialIndex = 0;
+        randomSeed = Random.Range(int.MinValue, int.MaxValue);
+        assessmentCompleted = false;
+        assessmentSessionId = CognitiveAssessmentService.BeginGame(
+            "true_false_life_quiz",
+            CognitiveProtocolRegistry.ProtocolVersion);
         trueButton.gameObject.SetActive(true);
         falseButton.gameObject.SetActive(true);
         restartButton.gameObject.SetActive(false);
@@ -184,6 +196,7 @@ public class SeniorTrueFalseQuiz : MonoBehaviour
         scoreText.text = $"答對 {score} 題 / 共 {questions.Count} 題";
         trueButton.interactable = true;
         falseButton.interactable = true;
+        questionStartTime = Time.time;
     }
 
     private void Answer(bool playerAnswer)
@@ -203,6 +216,7 @@ public class SeniorTrueFalseQuiz : MonoBehaviour
         {
             score++;
         }
+        RecordAnswerTrial(question, playerAnswer, isCorrect);
 
         // 【優化】答對使用深藍色，答錯使用純黑色，提高對比與長輩辨識度
         feedbackText.color = isCorrect ? new Color(0.05f, 0.2f, 0.6f) : Color.black;
@@ -237,6 +251,49 @@ public class SeniorTrueFalseQuiz : MonoBehaviour
         trueButton.gameObject.SetActive(false);
         falseButton.gameObject.SetActive(false);
         restartButton.gameObject.SetActive(true);
+        CompleteAssessment();
+    }
+
+    private void RecordAnswerTrial(Question question, bool playerAnswer, bool isCorrect)
+    {
+        if (string.IsNullOrEmpty(assessmentSessionId))
+        {
+            return;
+        }
+
+        trialIndex++;
+        CognitiveAssessmentService.RecordTrial(assessmentSessionId, new CognitiveTrialRecord
+        {
+            trialIndex = trialIndex,
+            roundIndex = 1,
+            stepIndex = currentQuestion + 1,
+            eventKind = "response",
+            randomSeed = randomSeed,
+            difficulty = 1,
+            stimulusCount = questions.Count,
+            condition = "true_false_life_knowledge",
+            stimulus = question.Text,
+            expectedAnswer = question.Answer ? "true" : "false",
+            userAnswer = playerAnswer ? "true" : "false",
+            outcome = isCorrect ? TrialOutcome.Correct : TrialOutcome.Incorrect,
+            reactionTimeMs = Mathf.RoundToInt(Mathf.Max(0f, Time.time - questionStartTime) * 1000f),
+            errorType = isCorrect ? "" : "knowledge_or_comprehension_error"
+        });
+    }
+
+    private void CompleteAssessment()
+    {
+        if (assessmentCompleted || string.IsNullOrEmpty(assessmentSessionId))
+        {
+            return;
+        }
+
+        assessmentCompleted = true;
+        CognitiveAssessmentService.CompleteGame(
+            assessmentSessionId,
+            CognitiveDomain.Language,
+            0f,
+            questions.Count);
     }
 
     private Button CreateAnswerButton(RectTransform parent, string name, string label, Vector2 anchoredPosition, Color color)
