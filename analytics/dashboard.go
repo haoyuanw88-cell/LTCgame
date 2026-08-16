@@ -102,7 +102,7 @@ func loadDomainAverages(ctx context.Context) ([]DomainAverage, error) {
 		}
 		item.Label = dashboardDomainLabel(item.Domain)
 		item.Trend = "實際資料"
-		item.Status = dashboardScoreStatus(item.AverageScore, item.HasInvalid)
+		item.Status = dashboardScoreStatus(item.AverageScore)
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -308,6 +308,16 @@ func dashboardDomainLabel(domain string) string {
 		return "執行功能"
 	case "memory":
 		return "記憶與日常任務"
+	case "visual_working_memory":
+		return "視覺工作記憶"
+	case "visuospatial_planning":
+		return "視覺空間規劃"
+	case "episodic_memory":
+		return "情節記憶"
+	case "language":
+		return "語言能力"
+	case "orientation":
+		return "定向能力"
 	case "spatial_reasoning":
 		return "空間推理"
 	case "motor_coordination":
@@ -344,10 +354,8 @@ func dashboardGameLabel(gameName string) string {
 	}
 }
 
-func dashboardScoreStatus(score float64, hasInvalid bool) string {
+func dashboardScoreStatus(score float64) string {
 	switch {
-	case hasInvalid:
-		return "需複核"
 	case score < 60:
 		return "高風險"
 	case score < 75:
@@ -465,7 +473,7 @@ const dashboardHTML = `<!doctype html>
 </div>
 <script>
 const state={filter:'all',data:null};const formatter=new Intl.NumberFormat('zh-TW');function byId(id){return document.getElementById(id)}function setText(id,value){byId(id).textContent=value}
-function tone(item){if(item.hasInvalid||item.averageScore<60)return 'risk';if(item.averageScore<75)return 'warn';return ''}
+function tone(item){if(item.averageScore<60)return 'risk';if(item.averageScore<75)return 'warn';return ''}
 function renderStats(data){setText('online',formatter.format(data.onlineUsers||0));setText('players',formatter.format(data.totalPlayers||0));setText('sessions',formatter.format(data.completedSessions||0));setText('todaySessions',formatter.format(data.todaySessions||0));setText('alerts',formatter.format(data.activeAlerts||0));const stamp=data.generatedAtUtc?new Date(data.generatedAtUtc):new Date();setText('updated','已更新 '+stamp.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'}))}
 function renderDomains(){const list=byId('domainList');list.innerHTML='';const rows=(state.data?.cognitiveAverages||[]).filter(item=>{const t=tone(item);if(state.filter==='review')return t;if(state.filter==='good')return !t;return true});byId('domainEmpty').style.display=rows.length?'none':'block';for(const item of rows){const t=tone(item);const row=document.createElement('div');row.className='domain-row '+t;row.innerHTML='<div><strong>'+(item.label||item.domain)+'</strong><div class="muted">'+(item.recordCount||0)+' 筆有效紀錄</div></div><div class="bar-track"><div class="bar-fill" style="width:'+Math.max(0,Math.min(100,item.averageScore||0))+'%"></div></div><div class="score">'+Number(item.averageScore||0).toFixed(1)+'</div><div><span class="pill '+(t||'neutral')+'">'+(item.status||'已同步')+'</span></div>';list.append(row)}}
 function renderTrend(data){const chart=byId('trendChart');chart.innerHTML='';const points=data.weeklyTrend||[];byId('trendEmpty').style.display=points.length?'none':'block';for(const point of points){const score=Math.max(0,Math.min(100,Number(point.score)||0));const height=score===0?0:Math.max(6,score);const col=document.createElement('div');col.className='trend-col';col.innerHTML='<div class="muted hide-sm">'+score+'分</div><div class="trend-bar '+(score===0?'zero':'')+'" title="'+point.sessions+' 筆完成" style="height:'+height+'%"></div><div class="trend-label">'+point.date+'</div>';chart.append(col)}}
