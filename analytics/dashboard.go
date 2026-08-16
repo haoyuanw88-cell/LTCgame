@@ -431,7 +431,7 @@ const dashboardHTML = `<!doctype html>
       </div>
     </header>
     <section class="grid stats" aria-label="營運摘要">
-      <article class="card stat"><div class="label">目前在線人數</div><div class="value" id="online">-</div><div class="delta">近 5 分鐘內有心跳</div></article>
+      <article class="card stat"><div class="label">目前在線人數</div><div class="value" id="online">-</div><div class="delta">近 5 分鐘的玩家人數</div></article>
       <article class="card stat"><div class="label">累積玩家</div><div class="value" id="players">-</div><div class="delta">已去識別玩家總數</div></article>
       <article class="card stat"><div class="label">完成遊戲紀錄</div><div class="value" id="sessions">-</div><div class="delta"><span id="todaySessions">-</span> 筆今日新增</div></article>
       <article class="card stat"><div class="label">待追蹤警示</div><div class="value" id="alerts">-</div><div class="delta">低分與品質異常資料</div></article>
