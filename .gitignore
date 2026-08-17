@@ -9,8 +9,10 @@
 [Ll]ibrary/
 [Tt]emp/
 [Oo]bj/
-[Bb]uild/
-[Bb]uilds/
+/[Bb]uild/
+/[Bb]uilds/
+/jt/[Bb]uild/
+/jt/[Bb]uilds/
 [Ll]ogs/
 [Uu]ser[Ss]ettings/
 *.log
