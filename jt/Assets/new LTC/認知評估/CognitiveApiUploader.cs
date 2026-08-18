@@ -138,8 +138,18 @@ void OnDestroy()
                 }
 
                 bool uploaded = false;
-                yield return PostJson("/api/v1/assessments", BuildAssessmentJson(session), ok => uploaded = ok);
+                AssessmentResponse uploadResponse = null;
+                yield return PostJson("/api/v1/assessments", BuildAssessmentJson(session), (ok, responseJson) =>
+                {
+                    uploaded = ok;
+                    if (!ok || string.IsNullOrWhiteSpace(responseJson)) return;
+                    try { uploadResponse = JsonUtility.FromJson<AssessmentResponse>(responseJson); }
+                    catch (Exception exception) { Debug.LogWarning("雲端測驗回應格式錯誤：" + exception.Message); }
+                });
                 if (!uploaded) break;
+
+                if (uploadResponse != null && uploadResponse.walletBalance >= 0)
+                    CoinData.SetCoins(uploadResponse.walletBalance);
 
                 try { File.Delete(path); }
                 catch (Exception exception) { Debug.LogWarning("資料已同步，但無法刪除待傳檔案：" + exception.Message); }
@@ -177,7 +187,7 @@ void OnDestroy()
             }
         }
 
-        IEnumerator PostJson(string route, string json, Action<bool> completed)
+        IEnumerator PostJson(string route, string json, Action<bool, string> completed)
         {
             byte[] body = System.Text.Encoding.UTF8.GetBytes(json);
             using (var request = new UnityWebRequest(ApiBaseUrl + route, UnityWebRequest.kHttpVerbPOST))
@@ -191,7 +201,7 @@ void OnDestroy()
                 bool ok = request.result == UnityWebRequest.Result.Success;
                 if (!ok)
                     Debug.LogWarning("認知資料暫存於本機，API 尚未同步：" + request.error);
-                completed(ok);
+                completed(ok, ok ? request.downloadHandler.text : string.Empty);
             }
         }
 
@@ -213,6 +223,8 @@ void OnDestroy()
                 {
                     trialIndex = trial.trialIndex,
                     trialType = ConditionCode(string.IsNullOrEmpty(trial.condition) ? trial.eventKind : trial.condition),
+                    eventCode = EventCode(trial.eventKind),
+                    outcomeCode = OutcomeCode(trial.outcome),
                     expectedResponse = trial.expectedAnswer,
                     actualResponse = trial.userAnswer,
                     reactionTimeMs = ClampToInt(trial.reactionTimeMs)
@@ -298,6 +310,30 @@ void OnDestroy()
             }
         }
 
+        static string EventCode(string value)
+        {
+            switch ((value ?? string.Empty).Trim().ToLowerInvariant())
+            {
+                case "response": case "rsp": return "RSP";
+                case "round_summary": case "rnd": return "RND";
+                case "selection": case "sel": return "SEL";
+                default: return "UNK";
+            }
+        }
+
+        static string OutcomeCode(TrialOutcome value)
+        {
+            switch (value)
+            {
+                case TrialOutcome.Correct: return "COR";
+                case TrialOutcome.Incorrect: return "INC";
+                case TrialOutcome.Omitted: return "OMI";
+                case TrialOutcome.Aborted: return "ABT";
+                case TrialOutcome.ValidAction: return "VAL";
+                default: return "UNK";
+            }
+        }
+
         static string MetricCode(string value)
         {
             switch ((value ?? string.Empty).Trim().ToLowerInvariant())
@@ -357,6 +393,7 @@ void OnDestroy()
         [Serializable] sealed class TrialRequest
         {
             public int trialIndex; public string trialType;
+            public string eventCode; public string outcomeCode;
             public string expectedResponse; public string actualResponse; public int reactionTimeMs;
         }
         [Serializable] sealed class MetricRequest
@@ -370,6 +407,11 @@ void OnDestroy()
             public string completionStatus;
             public List<TrialRequest> trials = new List<TrialRequest>();
             public List<MetricRequest> metrics = new List<MetricRequest>();
+        }
+        [Serializable] sealed class AssessmentResponse
+        {
+            public string sessionId; public bool stored; public bool created;
+            public int trialCount; public int metricCount; public int rewardCoins; public int walletBalance;
         }
     }
 }

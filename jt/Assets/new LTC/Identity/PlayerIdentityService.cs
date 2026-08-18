@@ -11,7 +11,7 @@ namespace LTC.Identity
     public interface IPlayerIdentityProvider
     {
         bool IsReady { get; }
-        long PlayerId { get; }
+        string PlayerId { get; }
         string PlayerCode { get; }
         string AccessToken { get; }
         string InstallationUid { get; }
@@ -48,7 +48,7 @@ namespace LTC.Identity
         }
 
         public bool IsReady { get; private set; }
-        public long PlayerId { get; private set; }
+        public string PlayerId { get; private set; } = string.Empty;
         public string PlayerCode { get; private set; } = string.Empty;
         public string AccessToken { get; private set; } = string.Empty;
         public string InstallationUid { get; private set; } = string.Empty;
@@ -100,6 +100,7 @@ namespace LTC.Identity
             if (heartbeatRoutine != null) StopCoroutine(heartbeatRoutine);
             if (googleSignInRoutine != null) StopCoroutine(googleSignInRoutine);
             IsReady = false;
+            PlayerId = string.Empty;
             AccessToken = string.Empty;
             heartbeatRoutine = null;
             googleSignInRoutine = null;
@@ -157,7 +158,7 @@ namespace LTC.Identity
                         try { response = JsonUtility.FromJson<PlayerSessionResponse>(request.downloadHandler.text); }
                         catch (Exception exception) { Debug.LogWarning("玩家身分服務回應格式無法解析：" + exception.Message); }
 
-                        if (response != null && response.playerId > 0 &&
+                        if (response != null && IsValidPlayerId(response.playerId) &&
                             !string.IsNullOrWhiteSpace(response.playerCode) &&
                             !string.IsNullOrWhiteSpace(response.accessToken))
                         {
@@ -346,7 +347,11 @@ namespace LTC.Identity
             {
                 if (!File.Exists(SessionFilePath)) return false;
                 var cached = JsonUtility.FromJson<CachedSession>(File.ReadAllText(SessionFilePath));
-                if (cached == null || cached.playerId <= 0 ||
+                // Sessions cached before the P000000 migration may not contain a
+                // textual playerId, but playerCode already carries the same key.
+                if (cached != null && !IsValidPlayerId(cached.playerId) && IsValidPlayerId(cached.playerCode))
+                    cached.playerId = cached.playerCode;
+                if (cached == null || !IsValidPlayerId(cached.playerId) ||
                     string.IsNullOrWhiteSpace(cached.playerCode) ||
                     string.IsNullOrWhiteSpace(cached.accessToken) ||
                     !DateTime.TryParse(cached.expiresAtUtc, null,
@@ -409,13 +414,19 @@ namespace LTC.Identity
 
         static bool IsCompleteSession(PlayerSessionResponse response)
         {
-            return response != null && response.playerId > 0 &&
+            return response != null && IsValidPlayerId(response.playerId) &&
                    !string.IsNullOrWhiteSpace(response.playerCode) &&
                    !string.IsNullOrWhiteSpace(response.accessToken) &&
                    !string.IsNullOrWhiteSpace(response.expiresAtUtc);
         }
 
-
+        static bool IsValidPlayerId(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length != 7 || value[0] != 'P') return false;
+            for (int index = 1; index < value.Length; index++)
+                if (value[index] < '0' || value[index] > '9') return false;
+            return value != "P000000";
+        }
 
         string LoadOrCreateInstallationUid()
         {
@@ -484,7 +495,7 @@ namespace LTC.Identity
         [Serializable]
         sealed class PlayerSessionResponse
         {
-            public long playerId;
+            public string playerId;
             public string playerCode;
             public string displayName;
             public string accessToken;
@@ -495,7 +506,7 @@ namespace LTC.Identity
         [Serializable]
         sealed class CachedSession
         {
-            public long playerId;
+            public string playerId;
             public string playerCode;
             public string displayName;
             public string accessToken;

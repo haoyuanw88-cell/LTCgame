@@ -1,8 +1,10 @@
+using System;
 using UnityEngine;
 
 public static class CoinData
 {
     private const string CoinKey = "TotalCoins";
+    public static event Action<int> BalanceChanged;
 
     public static int TotalCoins
     {
@@ -14,14 +16,14 @@ public static class CoinData
 
     public static void AddCoins(int amount)
     {
-        int newTotal = TotalCoins + amount;
-        PlayerPrefs.SetInt(CoinKey, newTotal);
-        PlayerPrefs.Save();
+        SetCoins(Mathf.Max(0, TotalCoins + amount));
     }
 
     public static void SetCoins(int amount)
     {
-        PlayerPrefs.SetInt(CoinKey, amount);
+        int safeAmount = Mathf.Max(0, amount);
+        PlayerPrefs.SetInt(CoinKey, safeAmount);
         PlayerPrefs.Save();
+        BalanceChanged?.Invoke(safeAmount);
     }
 }

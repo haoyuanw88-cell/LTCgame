@@ -1023,11 +1023,19 @@ private void BuildStatisticsPage(Transform parent)
             return;
         }
 
-        CoinData.AddCoins(DailyLoginRewardCoins);
-        PlayerPrefs.SetString(LastDailyLoginKey, TodayKey());
-        PlayerPrefs.Save();
-        RefreshUserData();
-        UpdateDailyLoginUI();
+        if (dailyLoginClaimButton != null) dailyLoginClaimButton.interactable = false;
+        if (dailyLoginPopupMessage != null) dailyLoginPopupMessage.text = "正在連線領取獎勵……";
+        CoinCloudService.ClaimDailyReward((success, claimedNow, message) =>
+        {
+            if (success)
+            {
+                PlayerPrefs.SetString(LastDailyLoginKey, TodayKey());
+                PlayerPrefs.Save();
+            }
+            if (dailyLoginPopupMessage != null) dailyLoginPopupMessage.text = message;
+            RefreshUserData();
+            UpdateDailyLoginUI();
+        });
     }
 
     private void UpdateDailyLoginUI()

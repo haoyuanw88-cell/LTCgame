@@ -18,12 +18,12 @@ public class PetItemShopDisplay : MonoBehaviour
         public Sprite icon;
     }
 
-    [Header("°Ó«~¦Cªí")]
+    [Header("å•†å“åˆ—è¡¨")]
     public Transform contentParent;
     public PetItemCard petItemCardPrefab;
     public List<PetItem> petItems = new List<PetItem>();
 
-    [Header("°Ó«~¸Ô²Ó­±ªO")]
+    [Header("å•†å“è©³ç´°é¢æ¿")]
     public GameObject itemPanel;
     public Image itemImage;
     public TMP_Text itemNameText;
@@ -31,7 +31,7 @@ public class PetItemShopDisplay : MonoBehaviour
     public Button closeButton;
     public Button buyButton;
 
-    [Header("ª÷¹ôÅã¥Ü")]
+    [Header("é‡‘å¹£é¡¯ç¤º")]
     public CoinDisplay coinDisplay;
 
     private PetItem currentItem;
@@ -113,7 +113,7 @@ public class PetItemShopDisplay : MonoBehaviour
         {
             if (itemDescriptionText != null)
             {
-                itemDescriptionText.text = "¤w¸gÁÊ¶R¹L¦¹°Ó«~¡C";
+                itemDescriptionText.text = "å·²ç¶“è³¼è²·éæ­¤å•†å“ã€‚";
             }
 
             return;
@@ -123,21 +123,32 @@ public class PetItemShopDisplay : MonoBehaviour
         {
             if (itemDescriptionText != null)
             {
-                itemDescriptionText.text = "ª÷¹ô¤£¨¬¡AµLªkÁÊ¶R¡C";
+                itemDescriptionText.text = "é‡‘å¹£ä¸è¶³ï¼Œç„¡æ³•è³¼è²·ã€‚";
             }
 
             return;
         }
 
-        CoinData.AddCoins(-currentItem.price);
-        InventoryData.AddItem(currentItem.itemId);
-
-        if (coinDisplay != null)
+        if (string.IsNullOrWhiteSpace(currentItem.itemId))
         {
-            coinDisplay.Refresh();
+            if (itemDescriptionText != null) itemDescriptionText.text = "å•†å“å°šæœªè¨­å®šé›²ç«¯ä»£ç¢¼ã€‚";
+            return;
         }
 
-        CloseItemPanel();
+        PetItem purchasingItem = currentItem;
+        if (buyButton != null) buyButton.interactable = false;
+        CoinCloudService.Purchase(purchasingItem.itemId, 1, result =>
+        {
+            if (buyButton != null) buyButton.interactable = true;
+            if (!result.success)
+            {
+                if (itemDescriptionText != null) itemDescriptionText.text = result.message;
+                return;
+            }
+            InventoryData.AddItem(purchasingItem.itemId);
+            if (coinDisplay != null) coinDisplay.Refresh();
+            CloseItemPanel();
+        });
     }
 
     void ClearContent()

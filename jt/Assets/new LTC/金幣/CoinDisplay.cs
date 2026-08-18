@@ -12,7 +12,18 @@ public class CoinDisplay : MonoBehaviour
 
     void OnEnable()
     {
+        CoinData.BalanceChanged += OnBalanceChanged;
         Refresh();
+    }
+
+    void OnDisable()
+    {
+        CoinData.BalanceChanged -= OnBalanceChanged;
+    }
+
+    void OnBalanceChanged(int balance)
+    {
+        if (coinText != null) coinText.text = balance.ToString();
     }
 
     public void Refresh()

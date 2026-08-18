@@ -18,12 +18,12 @@ public class FoodShopDisplay : MonoBehaviour
         public Sprite icon;
     }
 
-    [Header("°Ó«~¦Cªí")]
+    [Header("å•†å“åˆ—è¡¨")]
     public Transform contentParent;
     public FoodItemCard foodItemCardPrefab;
     public List<FoodItem> foodItems = new List<FoodItem>();
 
-    [Header("°Ó«~¸Ô²Ó­±ªO")]
+    [Header("å•†å“è©³ç´°é¢æ¿")]
     public GameObject itemPanel;
     public Image itemImage;
     public TMP_Text itemNameText;
@@ -31,13 +31,14 @@ public class FoodShopDisplay : MonoBehaviour
     public Button closeButton;
     public Button buyButton;
 
-    [Header("ª÷¹ôÅã¥Ü")]
+    [Header("é‡‘å¹£é¡¯ç¤º")]
     public CoinDisplay coinDisplay;
 
     private FoodItem currentItem;
 
     void Start()
     {
+        AssignServerItemCodes();
         if (itemPanel != null)
         {
             itemPanel.SetActive(false);
@@ -113,21 +114,32 @@ public class FoodShopDisplay : MonoBehaviour
         {
             if (itemDescriptionText != null)
             {
-                itemDescriptionText.text = "ª÷¹ô¤£¨¬¡AµLªkÁÊ¶R¡C";
+                itemDescriptionText.text = "é‡‘å¹£ä¸è¶³ï¼Œç„¡æ³•è³¼è²·ã€‚";
             }
 
             return;
         }
 
-        CoinData.AddCoins(-currentItem.price);
-        InventoryData.AddItemCount(currentItem.itemId, 1);
-
-        if (coinDisplay != null)
+        if (string.IsNullOrWhiteSpace(currentItem.itemId))
         {
-            coinDisplay.Refresh();
+            if (itemDescriptionText != null) itemDescriptionText.text = "å•†å“å°šæœªè¨­å®šé›²ç«¯ä»£ç¢¼ã€‚";
+            return;
         }
 
-        CloseItemPanel();
+        FoodItem purchasingItem = currentItem;
+        if (buyButton != null) buyButton.interactable = false;
+        CoinCloudService.Purchase(purchasingItem.itemId, 1, result =>
+        {
+            if (buyButton != null) buyButton.interactable = true;
+            if (!result.success)
+            {
+                if (itemDescriptionText != null) itemDescriptionText.text = result.message;
+                return;
+            }
+            InventoryData.SetItemCount(purchasingItem.itemId, result.itemQuantity);
+            if (coinDisplay != null) coinDisplay.Refresh();
+            CloseItemPanel();
+        });
     }
 
     void ClearContent()
@@ -137,6 +149,20 @@ public class FoodShopDisplay : MonoBehaviour
         for (int i = contentParent.childCount - 1; i >= 0; i--)
         {
             Destroy(contentParent.GetChild(i).gameObject);
+        }
+    }
+
+    void AssignServerItemCodes()
+    {
+        foreach (FoodItem item in foodItems)
+        {
+            if (item == null || !string.IsNullOrWhiteSpace(item.itemId)) continue;
+            switch ((item.itemName ?? string.Empty).Trim())
+            {
+                case "è˜‹æœ": item.itemId = "F_APPLE"; break;
+                case "é¦™è•‰": item.itemId = "F_BANANA"; break;
+                case "é³³æ¢¨": item.itemId = "F_PINE"; break;
+            }
         }
     }
 }
