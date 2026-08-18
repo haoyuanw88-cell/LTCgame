@@ -102,6 +102,9 @@ namespace LTCCognitiveAssessment
     {
         public string schemaVersion = "3.0";
         public string sessionId;
+        public string uploadSessionId;
+        public string uploadSessionToken;
+        public string uploadSessionExpiresAtUtc;
         public string anonymousUserId;
         public string gameId;
         public string taskVersion;
