@@ -36,7 +36,7 @@ func StartAssessment(ctx context.Context, p *StartAssessmentRequest) (*StartAsse
 		return nil, err
 	}
 	sessionID = strings.TrimSpace(sessionID)
-	expiresAt := time.Now().UTC().Add(4 * time.Hour)
+	expiresAt := time.Now().UTC().Add(accessTokenLifetime)
 	return &StartAssessmentResponse{
 		SessionID:    sessionID,
 		SessionToken: issueAssessmentToken(playerID, sessionID, gameCode, expiresAt),
