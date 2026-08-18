@@ -30,6 +30,7 @@ namespace LTC.Identity
         Coroutine signInRoutine;
         Coroutine heartbeatRoutine;
         Coroutine profileSyncRoutine;
+        Coroutine googleSignInRoutine;
         bool connectionWarningLogged;
 
         public static IPlayerIdentityProvider Current
@@ -51,12 +52,14 @@ namespace LTC.Identity
         public string PlayerCode { get; private set; } = string.Empty;
         public string AccessToken { get; private set; } = string.Empty;
         public string InstallationUid { get; private set; } = string.Empty;
+        public string AuthProvider { get; private set; } = "guest";
         public string StableLocalPlayerKey => "guest-" + InstallationUid;
         public event Action IdentityChanged;
 
         string ApiBaseUrl => PlayerPrefs.GetString(ApiBaseUrlPlayerPrefsKey, DefaultApiBaseUrl).Trim().TrimEnd('/');
         string IdentityDirectory => Path.Combine(Application.persistentDataPath, "Identity");
         string InstallationFilePath => Path.Combine(IdentityDirectory, "installation.id");
+        string SessionFilePath => Path.Combine(IdentityDirectory, "player.session.json");
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics() { instance = null; }
@@ -69,7 +72,7 @@ namespace LTC.Identity
             instance = this;
             DontDestroyOnLoad(gameObject);
             InstallationUid = LoadOrCreateInstallationUid();
-            Refresh();
+            if (!TryRestoreCachedSession()) Refresh();
         }
 
         void OnDisable()
@@ -78,6 +81,7 @@ namespace LTC.Identity
             signInRoutine = null;
             heartbeatRoutine = null;
             profileSyncRoutine = null;
+            googleSignInRoutine = null;
         }
 
         void OnDestroy()
@@ -85,6 +89,7 @@ namespace LTC.Identity
             StopAllCoroutines();
             heartbeatRoutine = null;
             profileSyncRoutine = null;
+            googleSignInRoutine = null;
             if (instance == this) instance = null;
         }
 
@@ -93,10 +98,29 @@ namespace LTC.Identity
         {
             if (signInRoutine != null) StopCoroutine(signInRoutine);
             if (heartbeatRoutine != null) StopCoroutine(heartbeatRoutine);
+            if (googleSignInRoutine != null) StopCoroutine(googleSignInRoutine);
             IsReady = false;
             AccessToken = string.Empty;
             heartbeatRoutine = null;
+            googleSignInRoutine = null;
             signInRoutine = StartCoroutine(SignInWithRetry());
+        }
+
+        public static void SignInWithGoogle(string idToken, string nonce, Action<bool, string> completed)
+        {
+            var service = Current as PlayerIdentityService;
+            if (service == null)
+            {
+                completed?.Invoke(false, "玩家身分服務尚未啟動");
+                return;
+            }
+            if (service.googleSignInRoutine != null)
+            {
+                completed?.Invoke(false, "Google 登入正在處理中");
+                return;
+            }
+            service.googleSignInRoutine = service.StartCoroutine(
+                service.GoogleSignInRoutine(idToken, nonce, completed));
         }
 
         public static void SyncCurrentProfile()
@@ -137,15 +161,7 @@ namespace LTC.Identity
                             !string.IsNullOrWhiteSpace(response.playerCode) &&
                             !string.IsNullOrWhiteSpace(response.accessToken))
                         {
-                            PlayerId = response.playerId;
-                            PlayerCode = response.playerCode;
-                            AccessToken = response.accessToken;
-                            IsReady = true;
-                            connectionWarningLogged = false;
-                            if (heartbeatRoutine != null) StopCoroutine(heartbeatRoutine);
-                            heartbeatRoutine = StartCoroutine(HeartbeatLoop());
-                            if (HasCompletedProfile()) SyncCurrentProfile();
-                            IdentityChanged?.Invoke();
+                            ApplySession(response, "guest", true);
                             break;
                         }
                         if (response != null) Debug.LogWarning("玩家身分服務回傳了不完整的登入資料。");
@@ -166,6 +182,62 @@ namespace LTC.Identity
             signInRoutine = null;
         }
 
+        IEnumerator GoogleSignInRoutine(string idToken, string nonce, Action<bool, string> completed)
+        {
+            if (string.IsNullOrWhiteSpace(idToken) || string.IsNullOrWhiteSpace(nonce))
+            {
+                googleSignInRoutine = null;
+                completed?.Invoke(false, "Google 登入憑證不完整");
+                yield break;
+            }
+
+            var payload = new GoogleSignInRequest
+            {
+                idToken = idToken,
+                nonce = nonce,
+                installationUid = InstallationUid,
+                displayName = ResolveDisplayName()
+            };
+            byte[] body = Encoding.UTF8.GetBytes(JsonUtility.ToJson(payload));
+            using (var request = new UnityWebRequest(ApiBaseUrl + "/api/v2/auth/google", UnityWebRequest.kHttpVerbPOST))
+            {
+                request.uploadHandler = new UploadHandlerRaw(body);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+                request.timeout = 15;
+                yield return request.SendWebRequest();
+
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    PlayerSessionResponse response = null;
+                    try { response = JsonUtility.FromJson<PlayerSessionResponse>(request.downloadHandler.text); }
+                    catch (Exception exception) { Debug.LogWarning("Google 登入回應格式無法解析：" + exception.Message); }
+
+                    if (IsCompleteSession(response))
+                    {
+                        if (signInRoutine != null)
+                        {
+                            StopCoroutine(signInRoutine);
+                            signInRoutine = null;
+                        }
+                        ApplySession(response, "google", true);
+                        googleSignInRoutine = null;
+                        completed?.Invoke(true, string.IsNullOrWhiteSpace(response.displayName)
+                            ? "Google 登入成功"
+                            : response.displayName + "，歡迎回來");
+                        yield break;
+                    }
+                }
+
+                string message = request.responseCode == 401
+                    ? "Google 身分驗證失敗，請重新登入"
+                    : "暫時無法連接登入服務";
+                Debug.LogWarning($"Google 登入未完成：{request.responseCode} {request.error}");
+                googleSignInRoutine = null;
+                completed?.Invoke(false, message);
+            }
+        }
+
         IEnumerator HeartbeatLoop()
         {
             while (isActiveAndEnabled && IsReady)
@@ -179,11 +251,21 @@ namespace LTC.Identity
                     yield return request.SendWebRequest();
                     if (request.responseCode == 401)
                     {
+                        string expiredProvider = AuthProvider;
                         IsReady = false;
                         AccessToken = string.Empty;
+                        DeleteCachedSession();
                         heartbeatRoutine = null;
-                        if (signInRoutine != null) StopCoroutine(signInRoutine);
-                        signInRoutine = StartCoroutine(SignInWithRetry());
+                        IdentityChanged?.Invoke();
+                        if (expiredProvider == "guest")
+                        {
+                            if (signInRoutine != null) StopCoroutine(signInRoutine);
+                            signInRoutine = StartCoroutine(SignInWithRetry());
+                        }
+                        else
+                        {
+                            Debug.LogWarning("Google 登入已過期，請在登入頁重新登入。");
+                        }
                         yield break;
                     }
                 }
@@ -241,6 +323,98 @@ namespace LTC.Identity
             }
         }
 
+        void ApplySession(PlayerSessionResponse response, string provider, bool persist)
+        {
+            PlayerId = response.playerId;
+            PlayerCode = response.playerCode;
+            AccessToken = response.accessToken;
+            AuthProvider = provider;
+            IsReady = true;
+            connectionWarningLogged = false;
+            if (!string.IsNullOrWhiteSpace(response.displayName))
+                PlayerPrefs.SetString("SavedPlayerName", response.displayName.Trim());
+            if (persist) SaveCachedSession(response, provider);
+            if (heartbeatRoutine != null) StopCoroutine(heartbeatRoutine);
+            heartbeatRoutine = StartCoroutine(HeartbeatLoop());
+            if (HasCompletedProfile()) SyncCurrentProfile();
+            IdentityChanged?.Invoke();
+        }
+
+        bool TryRestoreCachedSession()
+        {
+            try
+            {
+                if (!File.Exists(SessionFilePath)) return false;
+                var cached = JsonUtility.FromJson<CachedSession>(File.ReadAllText(SessionFilePath));
+                if (cached == null || cached.playerId <= 0 ||
+                    string.IsNullOrWhiteSpace(cached.playerCode) ||
+                    string.IsNullOrWhiteSpace(cached.accessToken) ||
+                    !DateTime.TryParse(cached.expiresAtUtc, null,
+                        System.Globalization.DateTimeStyles.AdjustToUniversal, out DateTime expiresAt) ||
+                    expiresAt <= DateTime.UtcNow.AddMinutes(1))
+                {
+                    DeleteCachedSession();
+                    return false;
+                }
+
+                ApplySession(new PlayerSessionResponse
+                {
+                    playerId = cached.playerId,
+                    playerCode = cached.playerCode,
+                    displayName = cached.displayName,
+                    accessToken = cached.accessToken,
+                    expiresAtUtc = cached.expiresAtUtc,
+                    isNewPlayer = false
+                }, cached.authProvider == "google" ? "google" : "guest", false);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("本機登入狀態無法讀取，將重新登入：" + exception.Message);
+                DeleteCachedSession();
+                return false;
+            }
+        }
+
+        void SaveCachedSession(PlayerSessionResponse response, string provider)
+        {
+            try
+            {
+                Directory.CreateDirectory(IdentityDirectory);
+                var cached = new CachedSession
+                {
+                    playerId = response.playerId,
+                    playerCode = response.playerCode,
+                    displayName = response.displayName,
+                    accessToken = response.accessToken,
+                    expiresAtUtc = response.expiresAtUtc,
+                    authProvider = provider
+                };
+                string temporaryPath = SessionFilePath + ".tmp";
+                File.WriteAllText(temporaryPath, JsonUtility.ToJson(cached), Encoding.UTF8);
+                if (File.Exists(SessionFilePath)) File.Delete(SessionFilePath);
+                File.Move(temporaryPath, SessionFilePath);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("登入成功，但無法保存本機登入狀態：" + exception.Message);
+            }
+        }
+
+        void DeleteCachedSession()
+        {
+            try { if (File.Exists(SessionFilePath)) File.Delete(SessionFilePath); }
+            catch (Exception exception) { Debug.LogWarning("無法清除過期登入狀態：" + exception.Message); }
+        }
+
+        static bool IsCompleteSession(PlayerSessionResponse response)
+        {
+            return response != null && response.playerId > 0 &&
+                   !string.IsNullOrWhiteSpace(response.playerCode) &&
+                   !string.IsNullOrWhiteSpace(response.accessToken) &&
+                   !string.IsNullOrWhiteSpace(response.expiresAtUtc);
+        }
+
 
 
         string LoadOrCreateInstallationUid()
@@ -290,6 +464,15 @@ namespace LTC.Identity
         }
 
         [Serializable]
+        sealed class GoogleSignInRequest
+        {
+            public string idToken;
+            public string nonce;
+            public string installationUid;
+            public string displayName;
+        }
+
+        [Serializable]
         sealed class ProfileUpdateRequest
         {
             public string displayName;
@@ -307,6 +490,17 @@ namespace LTC.Identity
             public string accessToken;
             public string expiresAtUtc;
             public bool isNewPlayer;
+        }
+
+        [Serializable]
+        sealed class CachedSession
+        {
+            public long playerId;
+            public string playerCode;
+            public string displayName;
+            public string accessToken;
+            public string expiresAtUtc;
+            public string authProvider;
         }
     }
 }

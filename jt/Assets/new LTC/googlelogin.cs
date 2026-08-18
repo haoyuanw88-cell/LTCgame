@@ -1,158 +1,337 @@
-﻿using UnityEngine;
-using System.Net;
 using System;
-using TMPro;
-using System.Collections.Generic;
-using UnityEngine.Networking;
 using System.Collections;
+using System.Collections.Generic;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+using TMPro;
+using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.UI;
+using LTC.Identity;
 
-public class googlelogin : MonoBehaviour
+/// <summary>
+/// Google OpenID Connect login for Unity Editor and desktop builds.
+/// Uses Authorization Code + PKCE, validates state, and sends only the signed
+/// Google ID token to the LTC backend. No Google client secret is stored here.
+/// </summary>
+public sealed class googlelogin : MonoBehaviour
 {
-    [Header("Google 設定")]
-    public string clientID = "969364101892-1nvsfsd5immh713ac.apps.googleusercontent.com";
+    const string AuthorizationEndpoint = "https://accounts.google.com/o/oauth2/v2/auth";
+    const string TokenEndpoint = "https://oauth2.googleapis.com/token";
+
+    [Header("Google 設定（桌面應用程式 OAuth 用戶端）")]
+    public string clientID = "969364101892-1nvsfsd5immh713adnn04l87ss9vfo60.apps.googleusercontent.com";
     public string redirectURI = "http://localhost:5000/";
 
     [Header("UI 連結")]
     public TextMeshProUGUI statusText;
-    public Image loginButtonImage;    // 指派你的按鈕 Image 組件
-    public Sprite loggedInSprite;     // 指派那張「登入完成」的圖片
+    public Image loginButtonImage;
+    public Sprite loggedInSprite;
 
-    private HttpListener listener;
-    private static Queue<Action> _mainThreadQueue = new Queue<Action>();
+    readonly Queue<Action> mainThreadQueue = new Queue<Action>();
+    HttpListener listener;
+    string pendingState;
+    string pendingNonce;
+    string codeVerifier;
+    bool loginInProgress;
 
     void Update()
     {
-        lock (_mainThreadQueue)
+        lock (mainThreadQueue)
         {
-            while (_mainThreadQueue.Count > 0) _mainThreadQueue.Dequeue().Invoke();
+            while (mainThreadQueue.Count > 0)
+                mainThreadQueue.Dequeue()?.Invoke();
         }
     }
 
     public void StartLogin()
     {
-        if (statusText == null)
+        if (loginInProgress)
         {
-            Debug.LogError("🔴 尚未指派 Status Text！");
+            SetStatus("Google 登入正在進行中…");
+            return;
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        SetStatus("Android 版需設定 Google 原生登入，請先使用電腦版");
+        Debug.LogWarning("Android 請改接 Credential Manager / Google Sign-In 原生套件；不可使用桌面 localhost 回呼。");
+        return;
+#else
+        if (!TryValidateSettings(out Uri callbackUri, out string validationError))
+        {
+            SetStatus(validationError);
+            Debug.LogError(validationError);
             return;
         }
 
         try
         {
             StopListener();
+            pendingState = CreateRandomUrlSafeValue(32);
+            pendingNonce = CreateRandomUrlSafeValue(32);
+            codeVerifier = CreateRandomUrlSafeValue(48);
+
             listener = new HttpListener();
-            listener.Prefixes.Add(redirectURI);
+            listener.Prefixes.Add(callbackUri.AbsoluteUri);
             listener.Start();
-            listener.BeginGetContext(new AsyncCallback(OnRequestReceived), listener);
+            listener.BeginGetContext(OnRequestReceived, listener);
 
-            Debug.Log("🌐 啟動 Google 登入，開啟瀏覽器...");
-
-            string authUrl = $"https://accounts.google.com/o/oauth2/v2/auth?response_type=token&client_id={clientID}&redirect_uri={redirectURI}&scope=https://www.googleapis.com/auth/userinfo.profile";
-            Application.OpenURL(authUrl);
+            loginInProgress = true;
+            SetButtonInteractable(false);
+            SetStatus("請在瀏覽器選擇 Google 帳號…");
+            Application.OpenURL(BuildAuthorizationUrl(callbackUri.AbsoluteUri));
         }
-        catch (Exception e)
+        catch (Exception exception)
         {
-            Debug.LogError("❌ 啟動失敗: " + e.Message);
-            statusText.text = "連線出錯";
+            FinishWithError("無法啟動 Google 登入");
+            Debug.LogError("Google 登入啟動失敗：" + exception.Message);
         }
+#endif
     }
 
-    private void OnRequestReceived(IAsyncResult result)
+    string BuildAuthorizationUrl(string callbackUri)
     {
-        if (listener == null || !listener.IsListening) return;
+        string challenge;
+        using (var sha256 = SHA256.Create())
+            challenge = ToBase64Url(sha256.ComputeHash(Encoding.ASCII.GetBytes(codeVerifier)));
 
-        var context = listener.EndGetContext(result);
-        string url = context.Request.Url.ToString();
-
-        if (url.Contains("token="))
+        var parameters = new Dictionary<string, string>
         {
-            string accessToken = url.Split(new[] { "token=" }, StringSplitOptions.None)[1].Split('&')[0];
-            SendHtml(context, "<html><body style='text-align:center;'><h1>登入成功！</h1><p>請回到 Unity 遊戲視窗。</p></body></html>");
+            { "client_id", clientID.Trim() },
+            { "redirect_uri", callbackUri },
+            { "response_type", "code" },
+            { "scope", "openid email profile" },
+            { "code_challenge", challenge },
+            { "code_challenge_method", "S256" },
+            { "state", pendingState },
+            { "nonce", pendingNonce },
+            { "prompt", "select_account" },
+            { "include_granted_scopes", "true" }
+        };
 
-            lock (_mainThreadQueue)
-            {
-                _mainThreadQueue.Enqueue(() => {
-                    Debug.Log("🔑 已取得 Token，正在背景請求資料...");
-                    StartCoroutine(FetchGoogleProfile(accessToken));
-                });
-            }
+        var query = new StringBuilder();
+        foreach (var pair in parameters)
+        {
+            if (query.Length > 0) query.Append('&');
+            query.Append(Uri.EscapeDataString(pair.Key));
+            query.Append('=');
+            query.Append(Uri.EscapeDataString(pair.Value));
+        }
+        return AuthorizationEndpoint + "?" + query;
+    }
+
+    void OnRequestReceived(IAsyncResult asyncResult)
+    {
+        HttpListener activeListener = asyncResult.AsyncState as HttpListener;
+        if (activeListener == null || !activeListener.IsListening) return;
+
+        HttpListenerContext context;
+        try { context = activeListener.EndGetContext(asyncResult); }
+        catch (ObjectDisposedException) { return; }
+        catch (HttpListenerException) { return; }
+        catch (Exception exception)
+        {
+            EnqueueMainThread(() => FinishWithError("登入回呼讀取失敗：" + exception.Message));
+            return;
+        }
+
+        string returnedState = context.Request.QueryString["state"];
+        string code = context.Request.QueryString["code"];
+        string oauthError = context.Request.QueryString["error"];
+
+        if (!string.IsNullOrEmpty(oauthError))
+        {
+            SendHtml(context, "登入已取消", "你可以關閉此頁面並回到遊戲重新嘗試。");
             StopListener();
+            EnqueueMainThread(() => FinishWithError("Google 登入已取消"));
+            return;
         }
-        else
+
+        if (string.IsNullOrEmpty(code))
         {
-            string js = "<html><script>if(window.location.hash) window.location.href='/token?'+window.location.hash.substring(1);</script><body>正在導向...</body></html>";
-            SendHtml(context, js);
-            listener.BeginGetContext(new AsyncCallback(OnRequestReceived), listener);
+            SendHtml(context, "等待登入", "請回到 Google 登入頁完成帳號選擇。");
+            TryListenAgain(activeListener);
+            return;
         }
+
+        if (string.IsNullOrEmpty(returnedState) || returnedState != pendingState)
+        {
+            SendHtml(context, "登入驗證失敗", "安全驗證資料不一致，請回到遊戲重新登入。");
+            StopListener();
+            EnqueueMainThread(() => FinishWithError("登入安全驗證失敗，請重新嘗試"));
+            return;
+        }
+
+        SendHtml(context, "登入完成", "身分正在驗證，現在可以關閉此頁面並回到遊戲。");
+        StopListener();
+        EnqueueMainThread(() => StartCoroutine(ExchangeAuthorizationCode(code)));
     }
 
-    private IEnumerator FetchGoogleProfile(string accessToken)
+    IEnumerator ExchangeAuthorizationCode(string authorizationCode)
     {
-        // 請求使用者資訊的 URL
-        string profileUrl = "https://www.googleapis.com/oauth2/v3/userinfo?access_token=" + accessToken;
+        var form = new WWWForm();
+        form.AddField("client_id", clientID.Trim());
+        form.AddField("code", authorizationCode);
+        form.AddField("code_verifier", codeVerifier);
+        form.AddField("grant_type", "authorization_code");
+        form.AddField("redirect_uri", redirectURI.Trim());
 
-        using (UnityWebRequest webRequest = UnityWebRequest.Get(profileUrl))
+        using (UnityWebRequest request = UnityWebRequest.Post(TokenEndpoint, form))
         {
-            yield return webRequest.SendWebRequest();
-
-            if (webRequest.result == UnityWebRequest.Result.Success)
+            request.timeout = 15;
+            yield return request.SendWebRequest();
+            if (request.result != UnityWebRequest.Result.Success)
             {
-                string jsonResponse = webRequest.downloadHandler.text;
-
-                // --- 解析 User ID (Google 內部欄位名稱為 sub) ---
-                string userId = ParseJsonValue(jsonResponse, "sub");
-                string userName = ParseJsonValue(jsonResponse, "name");
-
-                // --- 在控制台回傳顯示 ---
-                Debug.Log("✅ [Google Login Success]");
-                Debug.Log("🆔 User ID (sub): " + userId);
-                Debug.Log("👤 User Name: " + userName);
-
-                // --- 更新 UI ---
-                if (statusText != null) statusText.gameObject.SetActive(false);
-
-                if (loginButtonImage != null && loggedInSprite != null)
-                {
-                    loginButtonImage.sprite = loggedInSprite;
-                }
+                Debug.LogWarning($"Google 授權碼交換失敗：{request.responseCode} {request.error}");
+                FinishWithError("Google 驗證失敗，請確認 OAuth 桌面用戶端設定");
+                yield break;
             }
-            else
+
+            GoogleTokenResponse tokenResponse = null;
+            try { tokenResponse = JsonUtility.FromJson<GoogleTokenResponse>(request.downloadHandler.text); }
+            catch (Exception exception) { Debug.LogWarning("Google Token 回應無法解析：" + exception.Message); }
+            if (tokenResponse == null || string.IsNullOrWhiteSpace(tokenResponse.id_token))
             {
-                Debug.LogError("❌ 資料抓取失敗: " + webRequest.error);
-                if (statusText != null) statusText.text = "登入失敗";
+                FinishWithError("Google 沒有回傳身分憑證，請重新登入");
+                yield break;
             }
+
+            SetStatus("正在建立遊戲帳號…");
+            PlayerIdentityService.SignInWithGoogle(tokenResponse.id_token, pendingNonce, OnBackendLoginCompleted);
         }
     }
 
-    // 簡易 JSON 解析器 (抓取 key 對應的字串值)
-    private string ParseJsonValue(string json, string key)
+    void OnBackendLoginCompleted(bool success, string message)
     {
-        string search = "\"" + key + "\": \"";
-        int start = json.IndexOf(search);
-        if (start == -1) return "未找到";
-        start += search.Length;
-        int end = json.IndexOf("\"", start);
-        return json.Substring(start, end - start);
+        loginInProgress = false;
+        ClearTransientSecrets();
+        SetButtonInteractable(true);
+        SetStatus(message);
+        if (!success) return;
+
+        if (loginButtonImage != null && loggedInSprite != null)
+            loginButtonImage.sprite = loggedInSprite;
+        Debug.Log("Google 登入及 LTC 玩家身分驗證成功：" + PlayerIdentityService.Current.PlayerCode);
     }
 
-    private void SendHtml(HttpListenerContext context, string html)
+    bool TryValidateSettings(out Uri callbackUri, out string error)
     {
-        byte[] buffer = System.Text.Encoding.UTF8.GetBytes(html);
-        context.Response.ContentType = "text/html";
-        context.Response.ContentEncoding = System.Text.Encoding.UTF8;
-        context.Response.ContentLength64 = buffer.Length;
-        context.Response.OutputStream.Write(buffer, 0, buffer.Length);
-        context.Response.OutputStream.Close();
-    }
-
-    private void StopListener()
-    {
-        if (listener != null)
+        callbackUri = null;
+        error = null;
+        if (string.IsNullOrWhiteSpace(clientID) || !clientID.Trim().EndsWith(".apps.googleusercontent.com", StringComparison.Ordinal))
         {
-            try { listener.Stop(); listener.Close(); } catch { }
-            listener = null;
+            error = "Google Client ID 尚未正確設定";
+            return false;
         }
+        if (!Uri.TryCreate(redirectURI.Trim(), UriKind.Absolute, out callbackUri) ||
+            callbackUri.Scheme != Uri.UriSchemeHttp || !callbackUri.IsLoopback ||
+            !callbackUri.AbsoluteUri.EndsWith("/", StringComparison.Ordinal))
+        {
+            error = "登入回呼網址必須是以 / 結尾的 localhost 網址";
+            return false;
+        }
+        return true;
     }
 
-    private void OnDestroy() => StopListener();
+    void FinishWithError(string message)
+    {
+        StopListener();
+        loginInProgress = false;
+        ClearTransientSecrets();
+        SetButtonInteractable(true);
+        SetStatus(message);
+    }
+
+    void EnqueueMainThread(Action action)
+    {
+        lock (mainThreadQueue) mainThreadQueue.Enqueue(action);
+    }
+
+    void TryListenAgain(HttpListener activeListener)
+    {
+        try
+        {
+            if (activeListener != null && activeListener.IsListening)
+                activeListener.BeginGetContext(OnRequestReceived, activeListener);
+        }
+        catch { }
+    }
+
+    void SendHtml(HttpListenerContext context, string title, string message)
+    {
+        string html = "<!doctype html><html lang='zh-Hant'><head><meta charset='utf-8'>" +
+                      "<meta name='viewport' content='width=device-width,initial-scale=1'>" +
+                      "<title>" + WebUtility.HtmlEncode(title) + "</title></head>" +
+                      "<body style='font-family:sans-serif;text-align:center;padding:56px;background:#f4f8f5;color:#173b36'>" +
+                      "<h1>" + WebUtility.HtmlEncode(title) + "</h1><p>" + WebUtility.HtmlEncode(message) + "</p></body></html>";
+        byte[] buffer = Encoding.UTF8.GetBytes(html);
+        try
+        {
+            context.Response.StatusCode = 200;
+            context.Response.ContentType = "text/html; charset=utf-8";
+            context.Response.ContentLength64 = buffer.Length;
+            context.Response.OutputStream.Write(buffer, 0, buffer.Length);
+        }
+        finally { context.Response.Close(); }
+    }
+
+    void SetStatus(string message)
+    {
+        if (statusText == null) return;
+        statusText.gameObject.SetActive(true);
+        statusText.text = message;
+    }
+
+    void SetButtonInteractable(bool interactable)
+    {
+        if (loginButtonImage == null) return;
+        Button button = loginButtonImage.GetComponent<Button>();
+        if (button != null) button.interactable = interactable;
+    }
+
+    static string CreateRandomUrlSafeValue(int byteCount)
+    {
+        byte[] bytes = new byte[byteCount];
+        using (RandomNumberGenerator generator = RandomNumberGenerator.Create())
+            generator.GetBytes(bytes);
+        return ToBase64Url(bytes);
+    }
+
+    static string ToBase64Url(byte[] bytes)
+    {
+        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
+
+    void ClearTransientSecrets()
+    {
+        pendingState = null;
+        pendingNonce = null;
+        codeVerifier = null;
+    }
+
+    void StopListener()
+    {
+        if (listener == null) return;
+        try { listener.Stop(); listener.Close(); }
+        catch { }
+        listener = null;
+    }
+
+    void OnDestroy()
+    {
+        StopListener();
+        ClearTransientSecrets();
+    }
+
+    [Serializable]
+    sealed class GoogleTokenResponse
+    {
+        public string access_token;
+        public string id_token;
+        public string token_type;
+        public int expires_in;
+        public string error;
+        public string error_description;
+    }
 }
