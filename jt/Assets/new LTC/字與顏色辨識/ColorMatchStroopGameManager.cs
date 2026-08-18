@@ -5,7 +5,7 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using LTCCognitiveAssessment;
 
-public class ColorMatchStroopGameManager : MonoBehaviour
+public class ColorMatchStroopGameManager : MonoBehaviour, ICognitiveGamePauseTarget
 {
     [System.Serializable]
     public class ColorWord
@@ -69,6 +69,13 @@ public class ColorMatchStroopGameManager : MonoBehaviour
     private string assessmentSessionId;
     private int randomSeed;
     private readonly int[] conditionBlockOrder = { 0, 1, 2, 3 };
+    private float pauseCheckpointTimeLeft;
+    private int pauseCheckpointTrialCount;
+    private int pauseCheckpointScore;
+    private int pauseCheckpointCorrectCount;
+    private int pauseCheckpointWrongCount;
+
+    public bool IsAssessmentRunning => isGameRunning;
 
     void Start()
     {
@@ -106,6 +113,7 @@ public class ColorMatchStroopGameManager : MonoBehaviour
         BindButtons();
         if (correctButton != null) correctButton.gameObject.SetActive(true);
         if (wrongButton != null) wrongButton.gameObject.SetActive(true);
+        SavePauseCheckpoint();
         NextQuestion();
         UpdateUI();
     }
@@ -193,6 +201,13 @@ private void BindResultReturnButton()
         int cell = conditionBlockOrder[positionInBlock];
         bool shouldMatch = cell < 2;
         currentHighConflict = (cell % 2) == 1;
+
+        GenerateQuestionForCondition(shouldMatch, currentHighConflict);
+    }
+
+    void GenerateQuestionForCondition(bool shouldMatch, bool highConflict)
+    {
+        currentHighConflict = highConflict;
 
         topMeaning = GetRandomColorWord();
         topInkColor = currentHighConflict ? GetDifferentColorWord(topMeaning) : topMeaning;
@@ -308,8 +323,41 @@ private void BindResultReturnButton()
             }
         }
 
+        SavePauseCheckpoint();
         NextQuestion();
         UpdateUI();
+    }
+
+    void SavePauseCheckpoint()
+    {
+        pauseCheckpointTimeLeft = timeLeft;
+        pauseCheckpointTrialCount = CognitiveAssessmentService.GetTrialCheckpoint(assessmentSessionId);
+        pauseCheckpointScore = score;
+        pauseCheckpointCorrectCount = correctCount;
+        pauseCheckpointWrongCount = wrongCount;
+    }
+
+    public void RestartCurrentItemAfterPause()
+    {
+        if (!isGameRunning) return;
+        CognitiveAssessmentService.RollbackToTrialCheckpoint(assessmentSessionId, pauseCheckpointTrialCount);
+        timeLeft = pauseCheckpointTimeLeft;
+        score = pauseCheckpointScore;
+        correctCount = pauseCheckpointCorrectCount;
+        wrongCount = pauseCheckpointWrongCount;
+
+        // 不沿用暫停時看到的題目；保留相同／不同及干擾高低，重新抽一題。
+        bool sameDifficultyMatchCondition = currentAnswerIsCorrect;
+        bool sameDifficultyConflict = currentHighConflict;
+        GenerateQuestionForCondition(sameDifficultyMatchCondition, sameDifficultyConflict);
+        UpdateUI();
+    }
+
+    public void CancelCurrentAssessment()
+    {
+        isGameRunning = false;
+        CognitiveAssessmentService.CancelGame(assessmentSessionId);
+        assessmentSessionId = null;
     }
 
     void UpdateUI()

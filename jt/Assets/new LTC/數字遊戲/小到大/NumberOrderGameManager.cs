@@ -6,7 +6,7 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using LTCCognitiveAssessment;
 
-public class NumberOrderPoolGameManager : MonoBehaviour
+public class NumberOrderPoolGameManager : MonoBehaviour, ICognitiveGamePauseTarget
 {
     [Header("預先排好的數字按鈕")]
     public List<Button> numberButtons = new List<Button>();
@@ -68,6 +68,15 @@ public class NumberOrderPoolGameManager : MonoBehaviour
     private float trialStartTime;
     private float roundStartTime;
     private int trialIndex;
+    private float pauseCheckpointTimeLeft;
+    private int pauseCheckpointTrialCount;
+    private int pauseCheckpointTrialIndex;
+    private int pauseCheckpointScore;
+    private int pauseCheckpointCorrectClicks;
+    private int pauseCheckpointWrongClicks;
+    private int pauseCheckpointRound;
+
+    public bool IsAssessmentRunning => isGameRunning;
 
     void Start()
     {
@@ -127,6 +136,7 @@ public class NumberOrderPoolGameManager : MonoBehaviour
             wrongImage.SetActive(false);
         }
 
+        SavePauseCheckpoint();
         SpawnRound();
         UpdateUI();
     }
@@ -286,6 +296,7 @@ private void BindResultReturnButton()
             {
                 RecordRoundSummary(TrialOutcome.Correct, "");
                 round++;
+                SavePauseCheckpoint();
                 SpawnRound();
             }
         }
@@ -303,6 +314,44 @@ private void BindResultReturnButton()
         }
 
         UpdateUI();
+    }
+
+    void SavePauseCheckpoint()
+    {
+        pauseCheckpointTimeLeft = timeLeft;
+        pauseCheckpointTrialCount = CognitiveAssessmentService.GetTrialCheckpoint(assessmentSessionId);
+        pauseCheckpointTrialIndex = trialIndex;
+        pauseCheckpointScore = score;
+        pauseCheckpointCorrectClicks = correctClickCount;
+        pauseCheckpointWrongClicks = wrongClickCount;
+        pauseCheckpointRound = round;
+    }
+
+    public void RestartCurrentItemAfterPause()
+    {
+        if (!isGameRunning) return;
+        CognitiveAssessmentService.RollbackToTrialCheckpoint(assessmentSessionId, pauseCheckpointTrialCount);
+        StopAllCoroutines();
+        timeLeft = pauseCheckpointTimeLeft;
+        trialIndex = pauseCheckpointTrialIndex;
+        score = pauseCheckpointScore;
+        correctClickCount = pauseCheckpointCorrectClicks;
+        wrongClickCount = pauseCheckpointWrongClicks;
+        round = pauseCheckpointRound;
+        isShowingWrong = false;
+        if (wrongImage != null) wrongImage.SetActive(false);
+
+        // 關卡編號不變，因此數量、正負數範圍與難度完全相同，只更換題目內容。
+        SpawnRound();
+        UpdateUI();
+    }
+
+    public void CancelCurrentAssessment()
+    {
+        isGameRunning = false;
+        StopAllCoroutines();
+        CognitiveAssessmentService.CancelGame(assessmentSessionId);
+        assessmentSessionId = null;
     }
 
     int GetNumberCountForRound(int roundNumber)

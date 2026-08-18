@@ -235,6 +235,34 @@ namespace LTCCognitiveAssessment
             session.trials.Add(trial);
         }
 
+        /// <summary>
+        /// 取得目前已完成的原始事件數，供遊戲在每題／每關完成後建立可回復的資料邊界。
+        /// </summary>
+        public static int GetTrialCheckpoint(string id)
+        {
+            return ActiveSessions.TryGetValue(id, out var session) ? session.trials.Count : 0;
+        }
+
+        /// <summary>
+        /// 捨棄指定邊界之後的半題操作。用於暫停後重新出同難度題目，避免思考時間污染反應時間。
+        /// </summary>
+        public static void RollbackToTrialCheckpoint(string id, int checkpoint)
+        {
+            if (!ActiveSessions.TryGetValue(id, out var session)) return;
+            checkpoint = Mathf.Clamp(checkpoint, 0, session.trials.Count);
+            if (checkpoint < session.trials.Count)
+                session.trials.RemoveRange(checkpoint, session.trials.Count - checkpoint);
+        }
+
+        /// <summary>
+        /// 取消未完成場次，不寫入本機、不上傳後端，也不納入統計。
+        /// </summary>
+        public static void CancelGame(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+            ActiveSessions.Remove(id);
+        }
+
         public static CognitiveGameResult CompleteGame(string id, CognitiveDomain domain,
             float conditionEffectMs = 0f, float difficultyReached = 0f)
         {

@@ -5,7 +5,7 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using LTCCognitiveAssessment;
 
-public class NumberSumGameManager : MonoBehaviour
+public class NumberSumGameManager : MonoBehaviour, ICognitiveGamePauseTarget
 {
     [Header("預先排好的數字按鈕")]
     public List<Button> numberButtons = new List<Button>();
@@ -72,6 +72,15 @@ public class NumberSumGameManager : MonoBehaviour
     private int minimumActionCount;
     private long initialPlanningTimeMs;
     private int trialIndex;
+    private float pauseCheckpointTimeLeft;
+    private int pauseCheckpointTrialCount;
+    private int pauseCheckpointTrialIndex;
+    private int pauseCheckpointScore;
+    private int pauseCheckpointCompletedRounds;
+    private int pauseCheckpointWrongClicks;
+    private int pauseCheckpointRound;
+
+    public bool IsAssessmentRunning => isGameRunning;
 
     void Start()
     {
@@ -119,6 +128,7 @@ public class NumberSumGameManager : MonoBehaviour
             resultPanel.SetActive(false);
         }
 
+        SavePauseCheckpoint();
         SpawnRound();
         UpdateUI();
         trialStartTime = Time.time;
@@ -401,7 +411,43 @@ private void BindResultReturnButton()
         completedRoundCount++;
         round++;
 
+        SavePauseCheckpoint();
         SpawnRound();
+    }
+
+    void SavePauseCheckpoint()
+    {
+        pauseCheckpointTimeLeft = timeLeft;
+        pauseCheckpointTrialCount = CognitiveAssessmentService.GetTrialCheckpoint(assessmentSessionId);
+        pauseCheckpointTrialIndex = trialIndex;
+        pauseCheckpointScore = score;
+        pauseCheckpointCompletedRounds = completedRoundCount;
+        pauseCheckpointWrongClicks = wrongClickCount;
+        pauseCheckpointRound = round;
+    }
+
+    public void RestartCurrentItemAfterPause()
+    {
+        if (!isGameRunning) return;
+        CognitiveAssessmentService.RollbackToTrialCheckpoint(assessmentSessionId, pauseCheckpointTrialCount);
+        timeLeft = pauseCheckpointTimeLeft;
+        trialIndex = pauseCheckpointTrialIndex;
+        score = pauseCheckpointScore;
+        completedRoundCount = pauseCheckpointCompletedRounds;
+        wrongClickCount = pauseCheckpointWrongClicks;
+        round = pauseCheckpointRound;
+
+        // 關卡不變，按鈕數量與所需加數相同；只重新抽數字與目標值。
+        SpawnRound();
+        trialStartTime = Time.time;
+        UpdateUI();
+    }
+
+    public void CancelCurrentAssessment()
+    {
+        isGameRunning = false;
+        CognitiveAssessmentService.CancelGame(assessmentSessionId);
+        assessmentSessionId = null;
     }
 
     void RecordSelectionTrial(int selectedNumber, int sumBeforeInput, bool validAction, string errorType)

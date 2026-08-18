@@ -13,20 +13,24 @@ using LTC.Identity;
 /// <summary>
 /// Google OpenID Connect login for Unity Editor and desktop builds.
 /// Uses Authorization Code + PKCE, validates state, and sends only the signed
-/// Google ID token to the LTC backend. No Google client secret is stored here.
+/// Google ID token to the LTC backend. The desktop client credential is read
+/// from local machine settings and is never serialized into the Unity project.
 /// </summary>
 public sealed class googlelogin : MonoBehaviour
 {
     const string AuthorizationEndpoint = "https://accounts.google.com/o/oauth2/v2/auth";
     const string TokenEndpoint = "https://oauth2.googleapis.com/token";
+    const string EditorClientSecretKey = "LTC.GoogleOAuth.ClientSecret";
+    const string DesktopClientSecretEnvironmentVariable = "LTC_GOOGLE_CLIENT_SECRET";
 
     [Header("Google 設定（桌面應用程式 OAuth 用戶端）")]
-    public string clientID = "969364101892-1nvsfsd5immh713adnn04l87ss9vfo60.apps.googleusercontent.com";
+    public string clientID = "969364101892-hc9laqgknt463hrnad8tf0jkbi5qniij.apps.googleusercontent.com";
     public string redirectURI = "http://localhost:5000/";
 
     [Header("UI 連結")]
     public TextMeshProUGUI statusText;
     public Image loginButtonImage;
+    public Button continueButton;
     public Sprite loggedInSprite;
 
     readonly Queue<Action> mainThreadQueue = new Queue<Action>();
@@ -34,7 +38,16 @@ public sealed class googlelogin : MonoBehaviour
     string pendingState;
     string pendingNonce;
     string codeVerifier;
+    string activeRedirectUri;
     bool loginInProgress;
+    PlayerIdentityService identityService;
+
+    void Start()
+    {
+        identityService = PlayerIdentityService.Current as PlayerIdentityService;
+        if (identityService != null) identityService.IdentityChanged += OnIdentityChanged;
+        RefreshAuthenticationUi(identityService);
+    }
 
     void Update()
     {
@@ -71,6 +84,7 @@ public sealed class googlelogin : MonoBehaviour
             pendingState = CreateRandomUrlSafeValue(32);
             pendingNonce = CreateRandomUrlSafeValue(32);
             codeVerifier = CreateRandomUrlSafeValue(48);
+            activeRedirectUri = callbackUri.AbsoluteUri;
 
             listener = new HttpListener();
             listener.Prefixes.Add(callbackUri.AbsoluteUri);
@@ -163,34 +177,62 @@ public sealed class googlelogin : MonoBehaviour
             return;
         }
 
-        SendHtml(context, "登入完成", "身分正在驗證，現在可以關閉此頁面並回到遊戲。");
+        SendHtml(context, "Google 授權完成", "遊戲正在驗證身分，現在可以關閉此頁面並回到遊戲。");
         StopListener();
         EnqueueMainThread(() => StartCoroutine(ExchangeAuthorizationCode(code)));
     }
 
     IEnumerator ExchangeAuthorizationCode(string authorizationCode)
     {
-        var form = new WWWForm();
-        form.AddField("client_id", clientID.Trim());
-        form.AddField("code", authorizationCode);
-        form.AddField("code_verifier", codeVerifier);
-        form.AddField("grant_type", "authorization_code");
-        form.AddField("redirect_uri", redirectURI.Trim());
-
-        using (UnityWebRequest request = UnityWebRequest.Post(TokenEndpoint, form))
+        // Google 的 token endpoint 明確要求 application/x-www-form-urlencoded。
+        // WWWForm 在部分 Unity 版本會改用 multipart/form-data，Google 會直接回傳 400。
+        string callbackUri = string.IsNullOrWhiteSpace(activeRedirectUri)
+            ? redirectURI.Trim()
+            : activeRedirectUri;
+        string clientSecret = GetDesktopClientSecret();
+        if (string.IsNullOrWhiteSpace(clientSecret))
         {
+            FinishWithError("Google 桌面用戶端密鑰尚未設定");
+            Debug.LogWarning("Google OAuth 本機設定缺少桌面用戶端密鑰；密鑰未寫入專案。");
+            yield break;
+        }
+
+        var tokenFields = new Dictionary<string, string>
+        {
+            { "client_id", clientID.Trim() },
+            { "client_secret", clientSecret },
+            { "code", authorizationCode },
+            { "code_verifier", codeVerifier },
+            { "grant_type", "authorization_code" },
+            { "redirect_uri", callbackUri }
+        };
+        string requestBody = BuildFormUrlEncoded(tokenFields);
+
+        using (var request = new UnityWebRequest(TokenEndpoint, UnityWebRequest.kHttpVerbPOST))
+        {
+            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(requestBody));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            request.SetRequestHeader("Accept", "application/json");
             request.timeout = 15;
             yield return request.SendWebRequest();
             if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogWarning($"Google 授權碼交換失敗：{request.responseCode} {request.error}");
-                FinishWithError("Google 驗證失敗，請確認 OAuth 桌面用戶端設定");
+                string responseBody = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+                GoogleTokenResponse errorResponse = ParseTokenResponse(responseBody);
+                string googleError = errorResponse != null ? errorResponse.error : string.Empty;
+                string googleDescription = errorResponse != null ? errorResponse.error_description : string.Empty;
+                string diagnostic = BuildOAuthDiagnostic(googleError, googleDescription);
+
+                Debug.LogWarning(
+                    $"Google 授權碼交換失敗：HTTP {request.responseCode}；" +
+                    $"Google 錯誤={SafeDiagnosticText(googleError)}；" +
+                    $"說明={SafeDiagnosticText(googleDescription)}");
+                FinishWithError(diagnostic);
                 yield break;
             }
 
-            GoogleTokenResponse tokenResponse = null;
-            try { tokenResponse = JsonUtility.FromJson<GoogleTokenResponse>(request.downloadHandler.text); }
-            catch (Exception exception) { Debug.LogWarning("Google Token 回應無法解析：" + exception.Message); }
+            GoogleTokenResponse tokenResponse = ParseTokenResponse(request.downloadHandler.text);
             if (tokenResponse == null || string.IsNullOrWhiteSpace(tokenResponse.id_token))
             {
                 FinishWithError("Google 沒有回傳身分憑證，請重新登入");
@@ -206,13 +248,33 @@ public sealed class googlelogin : MonoBehaviour
     {
         loginInProgress = false;
         ClearTransientSecrets();
-        SetButtonInteractable(true);
         SetStatus(message);
-        if (!success) return;
+        if (!success)
+        {
+            SetButtonInteractable(true);
+            SetContinueInteractable(false);
+            return;
+        }
 
-        if (loginButtonImage != null && loggedInSprite != null)
-            loginButtonImage.sprite = loggedInSprite;
+        SetButtonInteractable(false);
+        SetContinueInteractable(true);
         Debug.Log("Google 登入及 LTC 玩家身分驗證成功：" + PlayerIdentityService.Current.PlayerCode);
+    }
+
+    void OnIdentityChanged()
+    {
+        RefreshAuthenticationUi(identityService);
+    }
+
+    void RefreshAuthenticationUi(PlayerIdentityService service)
+    {
+        bool signedInWithGoogle = service != null && service.IsReady &&
+                                  string.Equals(service.AuthProvider, "google", StringComparison.OrdinalIgnoreCase);
+        SetButtonInteractable(!signedInWithGoogle && !loginInProgress);
+        SetContinueInteractable(signedInWithGoogle);
+        SetStatus(signedInWithGoogle
+            ? "Google 登入完成，可以開始遊戲"
+            : "請先使用 Google 帳號登入");
     }
 
     bool TryValidateSettings(out Uri callbackUri, out string error)
@@ -290,6 +352,11 @@ public sealed class googlelogin : MonoBehaviour
         if (button != null) button.interactable = interactable;
     }
 
+    void SetContinueInteractable(bool interactable)
+    {
+        if (continueButton != null) continueButton.interactable = interactable;
+    }
+
     static string CreateRandomUrlSafeValue(int byteCount)
     {
         byte[] bytes = new byte[byteCount];
@@ -303,11 +370,77 @@ public sealed class googlelogin : MonoBehaviour
         return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
+    static string BuildFormUrlEncoded(Dictionary<string, string> values)
+    {
+        var body = new StringBuilder();
+        foreach (var pair in values)
+        {
+            if (body.Length > 0) body.Append('&');
+            body.Append(Uri.EscapeDataString(pair.Key));
+            body.Append('=');
+            body.Append(Uri.EscapeDataString(pair.Value ?? string.Empty));
+        }
+        return body.ToString();
+    }
+
+    static GoogleTokenResponse ParseTokenResponse(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return JsonUtility.FromJson<GoogleTokenResponse>(json); }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("Google Token 回應無法解析：" + exception.Message);
+            return null;
+        }
+    }
+
+    static string BuildOAuthDiagnostic(string error, string description)
+    {
+        if (string.Equals(error, "invalid_request", StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(description) &&
+            description.IndexOf("client_secret", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "Google 桌面用戶端密鑰未正確載入";
+
+        switch (error)
+        {
+            case "invalid_grant":
+                return "Google 驗證碼已失效，請重新按一次 Google 登入";
+            case "redirect_uri_mismatch":
+                return "Google 回呼網址不一致，請檢查 OAuth 桌面用戶端設定";
+            case "invalid_client":
+                return "Google 用戶端設定不正確，請確認使用桌面應用程式 Client ID";
+            case "invalid_request":
+                return "Google 登入請求格式不正確，請查看 Unity Console 的詳細原因";
+            default:
+                return string.IsNullOrWhiteSpace(description)
+                    ? "Google 身分驗證失敗，請重新登入"
+                    : "Google 身分驗證失敗：" + SafeDiagnosticText(description);
+        }
+    }
+
+    static string SafeDiagnosticText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "未提供";
+        string singleLine = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return singleLine.Length <= 240 ? singleLine : singleLine.Substring(0, 240);
+    }
+
+    static string GetDesktopClientSecret()
+    {
+#if UNITY_EDITOR
+        return UnityEditor.EditorPrefs.GetString(EditorClientSecretKey, string.Empty).Trim();
+#else
+        string value = Environment.GetEnvironmentVariable(DesktopClientSecretEnvironmentVariable);
+        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+#endif
+    }
+
     void ClearTransientSecrets()
     {
         pendingState = null;
         pendingNonce = null;
         codeVerifier = null;
+        activeRedirectUri = null;
     }
 
     void StopListener()
@@ -320,6 +453,8 @@ public sealed class googlelogin : MonoBehaviour
 
     void OnDestroy()
     {
+        if (identityService != null) identityService.IdentityChanged -= OnIdentityChanged;
+        identityService = null;
         StopListener();
         ClearTransientSecrets();
     }
