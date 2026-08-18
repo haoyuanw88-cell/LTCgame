@@ -45,6 +45,8 @@ type PlayerProfile struct {
 type TrialRequest struct {
 	TrialIndex       int    `json:"trialIndex"`
 	TrialType        string `json:"trialType"`
+	EventCode        string `json:"eventCode"`
+	OutcomeCode      string `json:"outcomeCode"`
 	ExpectedResponse string `json:"expectedResponse"`
 	ActualResponse   string `json:"actualResponse"`
 	ReactionTimeMS   int    `json:"reactionTimeMs"`
@@ -79,11 +81,40 @@ type StartAssessmentResponse struct {
 }
 
 type AssessmentResponse struct {
-	SessionID   string `json:"sessionId"`
-	Stored      bool   `json:"stored"`
-	Created     bool   `json:"created"`
-	TrialCount  int    `json:"trialCount"`
-	MetricCount int    `json:"metricCount"`
+	SessionID     string `json:"sessionId"`
+	Stored        bool   `json:"stored"`
+	Created       bool   `json:"created"`
+	TrialCount    int    `json:"trialCount"`
+	MetricCount   int    `json:"metricCount"`
+	RewardCoins   int    `json:"rewardCoins"`
+	WalletBalance int    `json:"walletBalance"`
+}
+
+type WalletResponse struct {
+	PlayerID     string `json:"playerId"`
+	Balance      int    `json:"balance"`
+	DailyClaimed bool   `json:"dailyClaimed"`
+}
+
+type DailyRewardResponse struct {
+	Claimed bool `json:"claimed"`
+	Reward  int  `json:"reward"`
+	Balance int  `json:"balance"`
+}
+
+type PurchaseRequest struct {
+	OperationID string `json:"operationId"`
+	ItemCode    string `json:"itemCode"`
+	Quantity    int    `json:"quantity"`
+}
+
+type PurchaseResponse struct {
+	TransactionID string `json:"transactionId"`
+	ItemCode      string `json:"itemCode"`
+	ItemQuantity  int    `json:"itemQuantity"`
+	Spent         int    `json:"spent"`
+	Balance       int    `json:"balance"`
+	Created       bool   `json:"created"`
 }
 
 type HeartbeatResponse struct {

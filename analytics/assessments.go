@@ -68,6 +68,7 @@ func SubmitAssessment(ctx context.Context, p *AssessmentRequest) (*AssessmentRes
 
 	durationMS := p.EndedAtUTC.Sub(p.StartedAtUTC).Milliseconds()
 	doneDate := p.EndedAtUTC.UTC().Format("2006-01-02")
+	rewardCoins := calculateGameReward(gameCode, p.Trials)
 
 	tx, err := db.Begin(ctx)
 	if err != nil {
@@ -92,11 +93,18 @@ func SubmitAssessment(ctx context.Context, p *AssessmentRequest) (*AssessmentRes
 		if strings.TrimSpace(ownerID) != playerID {
 			return nil, invalidArgument("sessionId belongs to another player")
 		}
-		var trialCount, metricCount int
+		var trialCount, metricCount, storedReward, walletBalance int
 		if err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM trial_test WHERE s_id = $1`, sessionID).Scan(&trialCount); err != nil {
 			return nil, err
 		}
 		if err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM metric WHERE s_id = $1`, sessionID).Scan(&metricCount); err != nil {
+			return nil, err
+		}
+		if err = tx.QueryRow(ctx, `
+			SELECT
+				COALESCE((SELECT amt FROM coin_tx WHERE p_id = $1 AND src_cd = 'GAM' AND s_id = $2), 0),
+				(SELECT bal FROM wallet WHERE p_id = $1)
+		`, playerID, sessionID).Scan(&storedReward, &walletBalance); err != nil {
 			return nil, err
 		}
 		if err = tx.Commit(); err != nil {
@@ -105,6 +113,7 @@ func SubmitAssessment(ctx context.Context, p *AssessmentRequest) (*AssessmentRes
 		return &AssessmentResponse{
 			SessionID: sessionID, Stored: true, Created: false,
 			TrialCount: trialCount, MetricCount: metricCount,
+			RewardCoins: storedReward, WalletBalance: walletBalance,
 		}, nil
 	}
 
@@ -161,6 +170,30 @@ func SubmitAssessment(ctx context.Context, p *AssessmentRequest) (*AssessmentRes
 	`, playerID); err != nil {
 		return nil, err
 	}
+
+	walletBalance := 0
+	if rewardCoins > 0 {
+		result, rewardErr := tx.Exec(ctx, `
+			INSERT INTO coin_tx (p_id, amt, src_cd, op_id, s_id)
+			VALUES ($1, $2, 'GAM', $3, $3)
+			ON CONFLICT (p_id, op_id) DO NOTHING
+		`, playerID, rewardCoins, sessionID)
+		if rewardErr != nil {
+			return nil, rewardErr
+		}
+		if result.RowsAffected() == 1 {
+			if err = tx.QueryRow(ctx, `
+				UPDATE wallet SET bal = bal + $2 WHERE p_id = $1 RETURNING bal
+			`, playerID, rewardCoins).Scan(&walletBalance); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if walletBalance == 0 {
+		if err = tx.QueryRow(ctx, `SELECT bal FROM wallet WHERE p_id = $1`, playerID).Scan(&walletBalance); err != nil {
+			return nil, err
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -168,6 +201,7 @@ func SubmitAssessment(ctx context.Context, p *AssessmentRequest) (*AssessmentRes
 	return &AssessmentResponse{
 		SessionID: sessionID, Stored: true, Created: true,
 		TrialCount: trialCount, MetricCount: metricCount,
+		RewardCoins: rewardCoins, WalletBalance: walletBalance,
 	}, nil
 }
 
