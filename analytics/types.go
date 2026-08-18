@@ -18,7 +18,7 @@ type GoogleSignInRequest struct {
 }
 
 type PlayerSessionResponse struct {
-	PlayerID     int64  `json:"playerId"`
+	PlayerID     string `json:"playerId"`
 	PlayerCode   string `json:"playerCode"`
 	DisplayName  string `json:"displayName"`
 	AccessToken  string `json:"accessToken"`
@@ -34,7 +34,7 @@ type UpdateProfileParams struct {
 }
 
 type PlayerProfile struct {
-	PlayerID       int64  `json:"playerId"`
+	PlayerID       string `json:"playerId"`
 	PlayerCode     string `json:"playerCode"`
 	DisplayName    string `json:"displayName"`
 	BirthDate      string `json:"birthDate"`
@@ -59,12 +59,23 @@ type MetricRequest struct {
 
 type AssessmentRequest struct {
 	SessionID        string          `json:"sessionId"`
+	SessionToken     string          `json:"sessionToken"`
 	GameCode         string          `json:"gameCode"`
 	StartedAtUTC     time.Time       `json:"startedAtUtc"`
 	EndedAtUTC       time.Time       `json:"endedAtUtc"`
 	CompletionStatus string          `json:"completionStatus"`
 	Trials           []TrialRequest  `json:"trials"`
 	Metrics          []MetricRequest `json:"metrics"`
+}
+
+type StartAssessmentRequest struct {
+	GameCode string `json:"gameCode"`
+}
+
+type StartAssessmentResponse struct {
+	SessionID    string `json:"sessionId"`
+	SessionToken string `json:"sessionToken"`
+	ExpiresAtUTC string `json:"expiresAtUtc"`
 }
 
 type AssessmentResponse struct {
@@ -76,7 +87,7 @@ type AssessmentResponse struct {
 }
 
 type HeartbeatResponse struct {
-	PlayerID  int64  `json:"playerId"`
+	PlayerID  string `json:"playerId"`
 	SeenAtUTC string `json:"seenAtUtc"`
 }
 

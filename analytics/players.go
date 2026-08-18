@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -25,15 +24,15 @@ func GuestSignIn(ctx context.Context, p *GuestSignInRequest) (*PlayerSessionResp
 	displayName := cleanText(p.DisplayName, 40)
 	authUID := hashIdentifier(installationUID)
 
-	var playerID int64
+	var playerID string
 	var storedName string
 	var isNew bool
 	err := db.QueryRow(ctx, `
 		INSERT INTO player (auth_uid, p_name, last_seen_ts)
-		VALUES ($1, NULLIF($2, ''), NOW())
+		VALUES ($1, NULLIF($2, ''), date_trunc('minute', NOW()))
 		ON CONFLICT (auth_uid) DO UPDATE SET
 			p_name = COALESCE(NULLIF(EXCLUDED.p_name, ''), player.p_name),
-			last_seen_ts = NOW()
+			last_seen_ts = date_trunc('minute', NOW())
 		RETURNING p_id, COALESCE(p_name, ''), (xmax = 0)
 	`, authUID, displayName).Scan(&playerID, &storedName, &isNew)
 	if err != nil {
@@ -62,7 +61,7 @@ func Heartbeat(ctx context.Context) (*HeartbeatResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	seenAt := time.Now().UTC()
+	seenAt := time.Now().UTC().Truncate(time.Minute)
 	if _, err = db.Exec(ctx, `UPDATE player SET last_seen_ts = $2 WHERE p_id = $1`, playerID, seenAt); err != nil {
 		return nil, err
 	}
@@ -84,8 +83,8 @@ func UpdateProfile(ctx context.Context, p *UpdateProfileParams) (*PlayerProfile,
 	if err != nil || birthDate.After(time.Now()) || birthDate.Year() < 1900 {
 		return nil, invalidArgument("birthDate must be a valid YYYY-MM-DD date")
 	}
-	sexCode := strings.ToLower(strings.TrimSpace(p.SexCode))
-	if sexCode != "male" && sexCode != "female" && sexCode != "other" && sexCode != "prefer_not_to_say" {
+	sexCode := compactSexCode(p.SexCode)
+	if sexCode == "" {
 		return nil, invalidArgument("sexCode is invalid")
 	}
 	if p.EducationYears < 0 || p.EducationYears > 30 {
@@ -93,7 +92,8 @@ func UpdateProfile(ctx context.Context, p *UpdateProfileParams) (*PlayerProfile,
 	}
 	displayName := cleanText(p.DisplayName, 40)
 	if _, err = db.Exec(ctx, `
-		UPDATE player SET p_name = NULLIF($2, ''), birth_dt = $3, sex_cd = $4, edu_yrs = $5, last_seen_ts = NOW()
+		UPDATE player SET p_name = NULLIF($2, ''), birth_dt = $3, sex_cd = $4, edu_yrs = $5,
+			last_seen_ts = date_trunc('minute', NOW())
 		WHERE p_id = $1
 	`, playerID, displayName, birthDate, sexCode, p.EducationYears); err != nil {
 		return nil, err
@@ -113,8 +113,23 @@ func hashIdentifier(value string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func playerCode(playerID int64) string {
-	return fmt.Sprintf("P%06d", playerID)
+func playerCode(playerID string) string {
+	return strings.TrimSpace(playerID)
+}
+
+func compactSexCode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "m", "male":
+		return "M"
+	case "f", "female":
+		return "F"
+	case "x", "other":
+		return "X"
+	case "n", "prefer_not_to_say":
+		return "N"
+	default:
+		return ""
+	}
 }
 
 func cleanText(value string, max int) string {

@@ -67,26 +67,32 @@ func GoogleSignIn(ctx context.Context, p *GoogleSignInRequest) (*PlayerSessionRe
 	// If this installation already owns a guest player and the Google account is
 	// new, convert that row in-place so existing sessions, wallet, and inventory
 	// remain attached to the same p_id. Otherwise restore the Google player.
-	var playerID int64
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var playerID string
 	var storedName string
 	var isNew bool
-	err = db.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		WITH converted AS (
 			UPDATE player
 			SET auth_uid = $1,
 				p_name = COALESCE(NULLIF($3, ''), p_name),
-				last_seen_ts = NOW()
+				last_seen_ts = date_trunc('minute', NOW())
 			WHERE $2 <> ''
 			  AND auth_uid = $2
 			  AND NOT EXISTS (SELECT 1 FROM player WHERE auth_uid = $1)
 			RETURNING p_id, COALESCE(p_name, '') AS p_name, FALSE AS is_new
 		), upserted AS (
 			INSERT INTO player (auth_uid, p_name, last_seen_ts)
-			SELECT $1, NULLIF($3, ''), NOW()
+			SELECT $1, NULLIF($3, ''), date_trunc('minute', NOW())
 			WHERE NOT EXISTS (SELECT 1 FROM converted)
 			ON CONFLICT (auth_uid) DO UPDATE SET
 				p_name = COALESCE(NULLIF(EXCLUDED.p_name, ''), player.p_name),
-				last_seen_ts = NOW()
+				last_seen_ts = date_trunc('minute', NOW())
 			RETURNING p_id, COALESCE(p_name, '') AS p_name, (xmax = 0) AS is_new
 		)
 		SELECT p_id, p_name, is_new FROM converted
@@ -97,7 +103,71 @@ func GoogleSignIn(ctx context.Context, p *GoogleSignInRequest) (*PlayerSessionRe
 	if err != nil {
 		return nil, fmt.Errorf("store Google player: %w", err)
 	}
-	if _, err = db.Exec(ctx, `INSERT INTO wallet (p_id) VALUES ($1) ON CONFLICT (p_id) DO NOTHING`, playerID); err != nil {
+	playerID = strings.TrimSpace(playerID)
+	if _, err = tx.Exec(ctx, `INSERT INTO wallet (p_id) VALUES ($1) ON CONFLICT (p_id) DO NOTHING`, playerID); err != nil {
+		return nil, err
+	}
+
+	// When both a guest row and a Google row already exist, merge every record
+	// owned by this installation into the Google player before deleting the guest.
+	if guestAuthUID != "" {
+		if _, err = tx.Exec(ctx, `
+			UPDATE player target
+			SET birth_dt = COALESCE(target.birth_dt, guest.birth_dt),
+				sex_cd = COALESCE(target.sex_cd, guest.sex_cd),
+				edu_yrs = COALESCE(target.edu_yrs, guest.edu_yrs)
+			FROM player guest
+			WHERE target.p_id = $1 AND guest.auth_uid = $2 AND guest.p_id <> $1
+		`, playerID, guestAuthUID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO inventory (p_id, i_id, qty)
+			SELECT $1, source.i_id, source.qty
+			FROM inventory source
+			JOIN player guest ON guest.p_id = source.p_id
+			WHERE guest.auth_uid = $2 AND guest.p_id <> $1
+			ON CONFLICT (p_id, i_id) DO UPDATE SET qty = inventory.qty + EXCLUDED.qty
+		`, playerID, guestAuthUID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `
+			UPDATE game_session SET p_id = $1
+			WHERE p_id IN (SELECT p_id FROM player WHERE auth_uid = $2 AND p_id <> $1)
+		`, playerID, guestAuthUID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `
+			UPDATE coin_tx SET p_id = $1
+			WHERE p_id IN (SELECT p_id FROM player WHERE auth_uid = $2 AND p_id <> $1)
+		`, playerID, guestAuthUID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `
+			UPDATE wallet target SET bal = target.bal + source.bal
+			FROM wallet source
+			JOIN player guest ON guest.p_id = source.p_id
+			WHERE target.p_id = $1 AND guest.auth_uid = $2 AND guest.p_id <> $1
+		`, playerID, guestAuthUID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `
+			DELETE FROM inventory
+			WHERE p_id IN (SELECT p_id FROM player WHERE auth_uid = $2 AND p_id <> $1)
+		`, playerID, guestAuthUID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `
+			DELETE FROM wallet
+			WHERE p_id IN (SELECT p_id FROM player WHERE auth_uid = $2 AND p_id <> $1)
+		`, playerID, guestAuthUID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `DELETE FROM player WHERE auth_uid = $2 AND p_id <> $1`, playerID, guestAuthUID); err != nil {
+			return nil, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 

@@ -48,7 +48,7 @@ func loadDashboardOverview(ctx context.Context) (*DashboardOverview, error) {
 			COALESCE(ROUND(AVG(m_val))::int, 0),
 			COALESCE(ROUND((100.0 * COUNT(*) FILTER (WHERE valid_yn = TRUE) / NULLIF(COUNT(*), 0))::numeric, 1)::float8, 0)
 		FROM metric
-		WHERE metric_name = 'task_performance_index'
+		WHERE metric_cd = 'TPI'
 	`).Scan(&overview.ActiveAlerts, &overview.AverageScore, &overview.CompletionRate); err != nil {
 		return nil, err
 	}
@@ -80,14 +80,14 @@ func loadDashboardOverview(ctx context.Context) (*DashboardOverview, error) {
 func loadDomainAverages(ctx context.Context) ([]DomainAverage, error) {
 	rows, err := db.Query(ctx, `
 		SELECT
-			m.dmn_name,
+			m.dmn_cd,
 			ROUND(AVG(m.m_val)::numeric, 1)::float8,
 			COUNT(*),
 			BOOL_OR(m.valid_yn = FALSE OR m.m_val < 60)
 		FROM metric m
-		WHERE m.metric_name = 'task_performance_index'
-		GROUP BY m.dmn_name
-		ORDER BY m.dmn_name
+		WHERE m.metric_cd = 'TPI'
+		GROUP BY m.dmn_cd
+		ORDER BY m.dmn_cd
 	`)
 	if err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func loadWeeklyTrend(ctx context.Context) ([]DashboardTrendPoint, error) {
 			FROM game_session s
 			LEFT JOIN metric m
 				ON m.s_id = s.s_id
-				AND m.metric_name = 'task_performance_index'
+				AND m.metric_cd = 'TPI'
 			GROUP BY s.done_dt
 			ORDER BY s.done_dt DESC
 			LIMIT 7
@@ -147,10 +147,10 @@ func loadWeeklyTrend(ctx context.Context) ([]DashboardTrendPoint, error) {
 
 func loadDashboardTasks(ctx context.Context) ([]DashboardTask, error) {
 	rows, err := db.Query(ctx, `
-		SELECT s.s_id, s.game_name, m.dmn_name, m.m_val, m.valid_yn
+		SELECT s.s_id, s.game_cd, m.dmn_cd, m.m_val, m.valid_yn
 		FROM metric m
 		JOIN game_session s ON s.s_id = m.s_id
-		WHERE m.metric_name = 'task_performance_index'
+		WHERE m.metric_cd = 'TPI'
 		  AND (m.valid_yn = FALSE OR m.m_val < 60)
 		ORDER BY s.done_dt DESC, s.s_id ASC
 		LIMIT 4
@@ -205,17 +205,17 @@ func loadDashboardTasks(ctx context.Context) ([]DashboardTask, error) {
 func loadGameStatuses(ctx context.Context) ([]DashboardGameStatus, error) {
 	rows, err := db.Query(ctx, `
 		SELECT
-			s.game_name,
+			s.game_cd,
 			COUNT(DISTINCT s.s_id)::int AS sessions,
 			COALESCE(ROUND((100.0 * COUNT(m.m_id) FILTER (WHERE m.valid_yn = TRUE) / NULLIF(COUNT(m.m_id), 0))::numeric)::int, 0) AS valid_rate,
 			COALESCE(BOOL_OR(m.valid_yn = FALSE OR m.m_val < 60), FALSE) AS has_alert,
-			COALESCE(MAX(m.dmn_name), 'unknown') AS domain
+			COALESCE(MAX(m.dmn_cd), 'UNK') AS domain
 		FROM game_session s
 		LEFT JOIN metric m
 			ON m.s_id = s.s_id
-			AND m.metric_name = 'task_performance_index'
-		GROUP BY s.game_name
-		ORDER BY sessions DESC, s.game_name ASC
+			AND m.metric_cd = 'TPI'
+		GROUP BY s.game_cd
+		ORDER BY sessions DESC, s.game_cd ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -256,7 +256,7 @@ func loadRecentSessions(ctx context.Context) ([]DashboardRecentSession, error) {
 	rows, err := db.Query(ctx, `
 		SELECT
 			s.p_id,
-			s.game_name,
+			s.game_cd,
 			COALESCE(ROUND(AVG(m.m_val))::int, 0) AS score,
 			s.dur_ms,
 			TO_CHAR(s.done_dt, 'MM/DD') AS played_at,
@@ -264,8 +264,8 @@ func loadRecentSessions(ctx context.Context) ([]DashboardRecentSession, error) {
 		FROM game_session s
 		LEFT JOIN metric m
 			ON m.s_id = s.s_id
-			AND m.metric_name = 'task_performance_index'
-		GROUP BY s.s_id, s.p_id, s.game_name, s.dur_ms, s.done_dt
+			AND m.metric_cd = 'TPI'
+		GROUP BY s.s_id, s.p_id, s.game_cd, s.dur_ms, s.done_dt
 		ORDER BY s.done_dt DESC, s.s_id DESC
 		LIMIT 6
 	`)
@@ -276,7 +276,8 @@ func loadRecentSessions(ctx context.Context) ([]DashboardRecentSession, error) {
 
 	sessions := make([]DashboardRecentSession, 0)
 	for rows.Next() {
-		var playerID, score, durationMS int
+		var score, durationMS int
+		var playerID string
 		var gameName, playedAt string
 		var hasAlert bool
 		if err = rows.Scan(&playerID, &gameName, &score, &durationMS, &playedAt, &hasAlert); err != nil {
@@ -287,7 +288,7 @@ func loadRecentSessions(ctx context.Context) ([]DashboardRecentSession, error) {
 			status = "需複核"
 		}
 		sessions = append(sessions, DashboardRecentSession{
-			PlayerID: fmt.Sprintf("P-%04d", playerID),
+			PlayerID: strings.TrimSpace(playerID),
 			Game:     dashboardGameLabel(gameName),
 			Score:    score,
 			Duration: formatDashboardDuration(durationMS),
@@ -299,32 +300,32 @@ func loadRecentSessions(ctx context.Context) ([]DashboardRecentSession, error) {
 }
 
 func dashboardDomainLabel(domain string) string {
-	switch domain {
-	case "attention_inhibition":
+	switch strings.ToUpper(strings.TrimSpace(domain)) {
+	case "ATT", "ATTENTION_INHIBITION":
 		return "注意力與抑制控制"
-	case "processing_speed":
+	case "SPD", "PROCESSING_SPEED":
 		return "處理速度"
-	case "executive_reasoning", "executive_function":
+	case "EXE", "EXECUTIVE_REASONING", "EXECUTIVE_FUNCTION":
 		return "執行功能"
-	case "memory":
+	case "MEM", "MEMORY":
 		return "記憶與日常任務"
-	case "visual_working_memory":
+	case "VWM", "VISUAL_WORKING_MEMORY":
 		return "視覺工作記憶"
-	case "visuospatial_planning":
+	case "VSP", "VISUOSPATIAL_PLANNING":
 		return "視覺空間規劃"
-	case "episodic_memory":
+	case "EPM", "EPISODIC_MEMORY":
 		return "情節記憶"
-	case "language":
+	case "LNG", "LANGUAGE":
 		return "語言能力"
-	case "orientation":
+	case "ORI", "ORIENTATION":
 		return "定向能力"
-	case "spatial_reasoning":
+	case "SPR", "SPATIAL_REASONING":
 		return "空間推理"
-	case "motor_coordination":
+	case "MOT", "MOTOR_COORDINATION":
 		return "動作協調"
-	case "wellbeing":
+	case "WEL", "WELLBEING":
 		return "參與與情緒回饋"
-	case "unknown", "":
+	case "UNK", "UNKNOWN", "":
 		return "未分類"
 	default:
 		return strings.ReplaceAll(domain, "_", " ")
@@ -332,23 +333,25 @@ func dashboardDomainLabel(domain string) string {
 }
 
 func dashboardGameLabel(gameName string) string {
-	switch gameName {
-	case "stroop_color_match", "stroop_color":
-		return "Stroop Color"
-	case "memory_cards":
-		return "Memory Cards"
-	case "body_whack_a_mole":
-		return "Body Whack-a-Mole"
-	case "trail_making":
-		return "Trail Making"
-	case "pipe_puzzle":
-		return "Pipe Puzzle"
-	case "life_quiz":
-		return "Life Quiz"
-	case "supermarket":
-		return "Supermarket Shopping"
-	case "virtual_pet":
-		return "Virtual Pet"
+	switch strings.ToUpper(strings.TrimSpace(gameName)) {
+	case "STP", "STROOP_COLOR_MATCH", "STROOP_COLOR":
+		return "顏色文字判斷"
+	case "ORD", "NUMBER_ORDER", "TRAIL_MAKING":
+		return "數字由小到大"
+	case "SUM", "NUMBER_SUM":
+		return "數字加總"
+	case "GOP", "GOPHER_REACTION", "BODY_WHACK_A_MOLE":
+		return "動作打地鼠"
+	case "CRD", "CARD_MEMORY_BATTLE", "MEMORY_CARDS":
+		return "翻牌記憶"
+	case "PIP", "PIPE_CONNECTION", "PIPE_PUZZLE":
+		return "旋轉接水管"
+	case "QIZ", "TRUE_FALSE_LIFE_QUIZ", "LIFE_QUIZ":
+		return "生活常識判斷"
+	case "SUP", "SUPERMARKET_SHOPPING", "SUPERMARKET":
+		return "超市購物"
+	case "VPT", "VIRTUAL_PET":
+		return "虛擬寵物"
 	default:
 		return strings.ReplaceAll(gameName, "_", " ")
 	}
@@ -474,7 +477,7 @@ const dashboardHTML = `<!doctype html>
 const state={filter:'all',data:null};const formatter=new Intl.NumberFormat('zh-TW');function byId(id){return document.getElementById(id)}function setText(id,value){byId(id).textContent=value}
 function tone(item){if(item.averageScore<60)return 'risk';if(item.averageScore<75)return 'warn';return ''}
 function renderStats(data){setText('online',formatter.format(data.onlineUsers||0));setText('players',formatter.format(data.totalPlayers||0));setText('sessions',formatter.format(data.completedSessions||0));setText('todaySessions',formatter.format(data.todaySessions||0));setText('alerts',formatter.format(data.activeAlerts||0));const stamp=data.generatedAtUtc?new Date(data.generatedAtUtc):new Date();setText('updated','已更新 '+stamp.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'}))}
-function renderDomains(){const list=byId('domainList');list.innerHTML='';const rows=(state.data?.cognitiveAverages||[]).filter(item=>{const t=tone(item);if(state.filter==='review')return t;if(state.filter==='good')return !t;return true});byId('domainEmpty').style.display=rows.length?'none':'block';for(const item of rows){const t=tone(item);const row=document.createElement('div');row.className='domain-row '+t;row.innerHTML='<div><strong>'+(item.label||item.domain)+'</strong><div class="muted">'+(item.recordCount||0)+' 筆有效紀錄</div></div><div class="bar-track"><div class="bar-fill" style="width:'+Math.max(0,Math.min(100,item.averageScore||0))+'%"></div></div><div class="score">'+Number(item.averageScore||0).toFixed(1)+'</div><div><span class="pill '+(t||'neutral')+'">'+(item.status||'已同步')+'</span></div>';list.append(row)}}
+function renderDomains(){const list=byId('domainList');list.innerHTML='';const rows=(state.data?.cognitiveAverages||[]).filter(item=>{const t=tone(item);if(state.filter==='review')return t;if(state.filter==='good')return !t;return true});byId('domainEmpty').style.display=rows.length?'none':'block';for(const item of rows){const t=tone(item);const row=document.createElement('div');row.className='domain-row '+t;row.innerHTML='<div><strong>'+(item.label||item.domain)+'</strong><div class="muted">'+(item.recordCount||0)+' 筆遊戲紀錄</div></div><div class="bar-track"><div class="bar-fill" style="width:'+Math.max(0,Math.min(100,item.averageScore||0))+'%"></div></div><div class="score">'+Number(item.averageScore||0).toFixed(1)+'</div><div><span class="pill '+(t||'neutral')+'">'+(item.status||'已同步')+'</span></div>';list.append(row)}}
 function renderTrend(data){const chart=byId('trendChart');chart.innerHTML='';const points=data.weeklyTrend||[];byId('trendEmpty').style.display=points.length?'none':'block';for(const point of points){const score=Math.max(0,Math.min(100,Number(point.score)||0));const height=score===0?0:Math.max(6,score);const col=document.createElement('div');col.className='trend-col';col.innerHTML='<div class="muted hide-sm">'+score+'分</div><div class="trend-bar '+(score===0?'zero':'')+'" title="'+point.sessions+' 筆完成" style="height:'+height+'%"></div><div class="trend-label">'+point.date+'</div>';chart.append(col)}}
 function renderTasks(data){const list=byId('taskList');list.innerHTML='';for(const task of data.tasks||[]){const t=task.priority==='高'?'risk':task.priority==='中'?'warn':'neutral';const item=document.createElement('div');item.className='task';item.innerHTML='<div><strong>'+task.title+'</strong><div class="task-meta">'+task.id+' · '+task.owner+' · '+task.due+'</div></div><div><span class="pill '+t+'">'+task.status+'</span></div>';list.append(item)}}
 function renderGames(data){byId('gamesBody').innerHTML=(data.games||[]).map(game=>'<tr><td><strong>'+game.name+'</strong><div class="muted">'+game.sessions+' 次完成</div></td><td>'+game.domain+'</td><td>'+game.completionRate+'%</td><td><span class="pill '+(game.status==='需調整'?'risk':game.status==='觀察'?'warn':'')+'">'+game.status+'</span></td><td>'+game.nextAction+'</td></tr>').join('')}
