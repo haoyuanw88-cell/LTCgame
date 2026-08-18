@@ -7,6 +7,16 @@ type GuestSignInRequest struct {
 	DisplayName     string `json:"displayName"`
 }
 
+// GoogleSignInRequest contains the Google ID token produced by the Unity
+// desktop login flow. The installation id is used only to convert an existing
+// guest player into the Google player on first sign-in, preserving game data.
+type GoogleSignInRequest struct {
+	IDToken         string `json:"idToken"`
+	Nonce           string `json:"nonce"`
+	InstallationUID string `json:"installationUid"`
+	DisplayName     string `json:"displayName"`
+}
+
 type PlayerSessionResponse struct {
 	PlayerID     int64  `json:"playerId"`
 	PlayerCode   string `json:"playerCode"`
