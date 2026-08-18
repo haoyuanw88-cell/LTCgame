@@ -12,7 +12,10 @@ import (
 // OAuth client IDs are public identifiers, not secrets. Add the Android client
 // ID here when the native Android Google sign-in integration is introduced.
 var allowedGoogleClientIDs = map[string]struct{}{
+	// Existing web client retained for backward compatibility and server flows.
 	"969364101892-1nvsfsd5immh713adnn04l87ss9vfo60.apps.googleusercontent.com": {},
+	// Unity Editor and Windows desktop Authorization Code + PKCE flow.
+	"969364101892-hc9laqgknt463hrnad8tf0jkbi5qniij.apps.googleusercontent.com": {},
 }
 
 // GoogleSignIn validates Google's signed ID token on the server and returns the
