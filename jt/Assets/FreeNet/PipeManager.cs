@@ -11,6 +11,7 @@ public class PipeManager : MonoBehaviour
 {
     public int width = 12;  
     public int height = 12; 
+    [NonSerialized]
     public Blockin[,] allPipes;
     public GameObject winUI; 
     public bool isGameOver = false;
