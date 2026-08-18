@@ -8,8 +8,9 @@ import (
 func TestValidateAssessment(t *testing.T) {
 	start := time.Now().UTC().Add(-time.Minute)
 	valid := &AssessmentRequest{
-		SessionID:        "1234567890abcdef",
-		GameCode:         "stroop_color_match",
+		SessionID:        "S00000001",
+		SessionToken:     "signed-test-token",
+		GameCode:         "STP",
 		StartedAtUTC:     start,
 		EndedAtUTC:       start.Add(time.Minute),
 		CompletionStatus: "completed",
