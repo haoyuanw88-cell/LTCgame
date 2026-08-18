@@ -661,6 +661,7 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                 ["result"] = resultToken
             };
 
+            token.ThrowIfCancellationRequested();
             await SendJsonAsync(responsePayload, token).ConfigureAwait(false);
         }
 
@@ -717,6 +718,8 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
 
         private async Task SendJsonAsync(JObject payload, CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
+
             if (_socket == null)
             {
                 throw new InvalidOperationException("WebSocket is not initialised");
