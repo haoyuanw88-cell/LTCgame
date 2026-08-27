@@ -231,13 +231,13 @@ func loadGameStatuses(ctx context.Context) ([]DashboardGameStatus, error) {
 			return nil, err
 		}
 		status := "上線"
-		nextAction := "維持追蹤"
+		nextAction := dashboardGameNextAction(gameName, false)
 		if hasAlert {
 			status = "需調整"
-			nextAction = "檢查資料品質與難度設定"
+			nextAction = dashboardGameNextAction(gameName, true)
 		} else if validRate < 80 {
 			status = "待優化"
-			nextAction = "追蹤完成品質"
+			nextAction = dashboardGameNextAction(gameName, true)
 		}
 		games = append(games, DashboardGameStatus{
 			ID:             gameName,
@@ -250,6 +250,35 @@ func loadGameStatuses(ctx context.Context) ([]DashboardGameStatus, error) {
 		})
 	}
 	return games, rows.Err()
+}
+
+func dashboardGameNextAction(gameName string, needsAdjustment bool) string {
+	if !needsAdjustment {
+		return "維持追蹤"
+	}
+
+	switch strings.ToUpper(strings.TrimSpace(gameName)) {
+	case "PIP", "PIPE_CONNECTION", "PIPE_PUZZLE":
+		return "減少管線段數，增加旋轉提示與成功判定檢查"
+	case "STP", "STROOP_COLOR_MATCH", "STROOP_COLOR":
+		return "放慢題目切換，先用 2 色版本降低干擾"
+	case "SUP", "SUPERMARKET_SHOPPING", "SUPERMARKET":
+		return "清單先降到 1-2 項，加入貨架分類提示"
+	case "CRD", "CARD_MEMORY_BATTLE", "MEMORY_CARDS":
+		return "減少卡片數，延長翻牌記憶時間"
+	case "ORD", "NUMBER_ORDER", "TRAIL_MAKING":
+		return "減少數字節點，放大按鈕與路徑提示"
+	case "SUM", "NUMBER_SUM":
+		return "降低數字範圍，增加步驟提示"
+	case "GOP", "GOPHER_REACTION", "BODY_WHACK_A_MOLE":
+		return "放慢出現速度，放大目標點擊範圍"
+	case "QIZ", "TRUE_FALSE_LIFE_QUIZ", "LIFE_QUIZ":
+		return "簡化題目文字，補上生活情境提示"
+	case "VPT", "VIRTUAL_PET":
+		return "減少同時任務，加入下一步提醒"
+	default:
+		return "降低難度，檢查提示、時間與有效資料判定"
+	}
 }
 
 func loadRecentSessions(ctx context.Context) ([]DashboardRecentSession, error) {
@@ -504,7 +533,7 @@ function renderGames(data){byId('gamesBody').innerHTML=(data.games||[]).map(game
 function renderRecent(data){byId('recentBody').innerHTML=(data.recentSessions||[]).map(item=>'<tr><td>'+item.playedAt+'</td><td>'+item.game+'</td><td><strong>'+item.score+'</strong></td><td><span class="pill '+(item.status==='需複核'?'risk':'')+'">'+item.status+'</span></td></tr>').join('')}
 function insightTone(level){if(level==='risk')return 'risk';if(level==='warn')return 'warn';return 'neutral'}
 function domainAdvice(item){if((item.averageScore||0)<60)return (item.label||item.domain)+'整體分數偏低，建議檢查反應速度與錯誤次數。';if((item.averageScore||0)<75)return (item.label||item.domain)+'整體略低，建議持續比較後續資料。';return (item.label||item.domain)+'表現穩定，維持目前訓練。'}
-function buildAIInsights(data){const insights=[];const domains=[...(data.cognitiveAverages||[])].sort((a,b)=>(a.averageScore||0)-(b.averageScore||0));if(domains.length){const lowest=domains[0];insights.push({source:'認知能力分布',title:lowest.label||lowest.domain,body:domainAdvice(lowest),level:(lowest.averageScore||0)<60?'risk':(lowest.averageScore||0)<75?'warn':'normal'})}const game=(data.games||[]).find(item=>item.status==='需調整'||item.completionRate<70)||(data.games||[]).find(item=>item.status==='待優化'||item.completionRate<80);if(game){insights.push({source:'遊戲內容管理',title:game.name,body:game.name+'需要檢查難度、提示與完成流程。',level:game.status==='需調整'||game.completionRate<70?'risk':'warn'})}else{insights.push({source:'遊戲內容管理',title:'遊戲狀態',body:'遊戲內容目前穩定，維持追蹤即可。',level:'normal'})}const trend=data.weeklyTrend||[];if(trend.length>=2){const previous=trend[trend.length-2];const latest=trend[trend.length-1];const diff=(latest.score||0)-(previous.score||0);insights.push({source:'最近 7 個有紀錄日期',title:'分數趨勢',body:diff<0?'最近分數有下降，建議持續追蹤。':'最近分數穩定，維持目前訓練。',level:diff<0?'warn':'normal'})}const tasks=data.tasks||[];const urgent=tasks.filter(task=>task.priority==='高'||task.status==='需複核').length;insights.push({source:'待處理事項',title:'追蹤任務',body:tasks.length?('目前有 '+tasks.length+' 件待處理，優先複核低分資料。'):'目前沒有待處理事項。',level:urgent?'risk':tasks.length?'warn':'normal'});return insights}
+function buildAIInsights(data){const insights=[];const domains=[...(data.cognitiveAverages||[])].sort((a,b)=>(a.averageScore||0)-(b.averageScore||0));if(domains.length){const lowest=domains[0];insights.push({source:'認知能力分布',title:lowest.label||lowest.domain,body:domainAdvice(lowest),level:(lowest.averageScore||0)<60?'risk':(lowest.averageScore||0)<75?'warn':'normal'})}const game=(data.games||[]).find(item=>item.status==='需調整'||item.completionRate<70)||(data.games||[]).find(item=>item.status==='待優化'||item.completionRate<80);if(game){insights.push({source:'遊戲內容管理',title:game.name,body:game.nextAction||'降低難度，檢查提示、時間與有效資料判定。',level:game.status==='需調整'||game.completionRate<70?'risk':'warn'})}else{insights.push({source:'遊戲內容管理',title:'遊戲狀態',body:'遊戲內容目前穩定，維持追蹤即可。',level:'normal'})}const trend=data.weeklyTrend||[];if(trend.length>=2){const previous=trend[trend.length-2];const latest=trend[trend.length-1];const diff=(latest.score||0)-(previous.score||0);insights.push({source:'最近 7 個有紀錄日期',title:'分數趨勢',body:diff<0?'最近分數有下降，建議持續追蹤。':'最近分數穩定，維持目前訓練。',level:diff<0?'warn':'normal'})}const tasks=data.tasks||[];const urgent=tasks.filter(task=>task.priority==='高'||task.status==='需複核').length;insights.push({source:'待處理事項',title:'追蹤任務',body:tasks.length?('目前有 '+tasks.length+' 件待處理，優先複核低分資料。'):'目前沒有待處理事項。',level:urgent?'risk':tasks.length?'warn':'normal'});return insights}
 function renderAIInsights(data){const list=byId('aiInsightList');list.innerHTML='';const insights=buildAIInsights(data);byId('aiEmpty').style.display=insights.length?'none':'block';for(const insight of insights){const t=insightTone(insight.level);const item=document.createElement('article');item.className='card ai-card';item.innerHTML='<div class="ai-card-head"><div class="ai-source">'+insight.source+'</div><span class="pill '+t+'">'+(t==='risk'?'整體偏低':t==='warn'?'整體略低':'穩定')+'</span></div><h3>'+insight.title+'</h3><p>'+insight.body+'</p>';list.append(item)}}
 function renderAll(data){state.data=data;renderStats(data);renderDomains();renderTrend(data);renderTasks(data);renderGames(data);renderRecent(data);renderAIInsights(data)}
 async function refresh(){byId('loadError').style.display='none';try{const response=await fetch('/api/v1/admin/overview',{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);renderAll(await response.json())}catch(error){byId('loadError').style.display='block';setText('updated','連線失敗')}}
