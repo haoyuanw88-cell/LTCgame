@@ -231,12 +231,12 @@ func loadGameStatuses(ctx context.Context) ([]DashboardGameStatus, error) {
 			return nil, err
 		}
 		status := "上線"
-		nextAction := "維持觀察"
+		nextAction := "維持追蹤"
 		if hasAlert {
 			status = "需調整"
 			nextAction = "檢查資料品質與難度設定"
 		} else if validRate < 80 {
-			status = "觀察"
+			status = "待優化"
 			nextAction = "追蹤完成品質"
 		}
 		games = append(games, DashboardGameStatus{
@@ -362,7 +362,7 @@ func dashboardScoreStatus(score float64) string {
 	case score < 60:
 		return "高風險"
 	case score < 75:
-		return "觀察中"
+		return "整體偏低"
 	default:
 		return "表現良好"
 	}
@@ -449,7 +449,7 @@ const dashboardHTML = `<!doctype html>
     <section class="grid layout">
       <div class="grid">
         <article class="panel">
-          <div class="panel-head"><div><h2>認知能力分布</h2><div class="muted">平均分數、樣本數與資料品質狀態</div></div><div class="tabs" id="domainTabs"><button class="tab active" data-filter="all" type="button">全部</button><button class="tab" data-filter="review" type="button">需關注</button><button class="tab" data-filter="good" type="button">表現良好</button></div></div>
+          <div class="panel-head"><div><h2>認知能力分布</h2><div class="muted">平均分數、樣本數與資料品質狀態</div></div><div class="tabs" id="domainTabs"><button class="tab active" data-filter="all" type="button">全部</button><button class="tab" data-filter="review" type="button">整體偏低</button><button class="tab" data-filter="good" type="button">表現良好</button></div></div>
           <div class="domain-list" id="domainList"></div><div class="empty" id="domainEmpty">目前沒有符合條件的認知資料</div>
         </article>
         <article class="panel" id="gameManagement">
@@ -500,12 +500,12 @@ function renderStats(data){setText('online',formatter.format(data.onlineUsers||0
 function renderDomains(){const list=byId('domainList');list.innerHTML='';const rows=(state.data?.cognitiveAverages||[]).filter(item=>{const t=tone(item);if(state.filter==='review')return t;if(state.filter==='good')return !t;return true});byId('domainEmpty').style.display=rows.length?'none':'block';for(const item of rows){const t=tone(item);const row=document.createElement('div');row.className='domain-row '+t;row.innerHTML='<div><strong>'+(item.label||item.domain)+'</strong><div class="muted">'+(item.recordCount||0)+' 筆遊戲紀錄</div></div><div class="bar-track"><div class="bar-fill" style="width:'+Math.max(0,Math.min(100,item.averageScore||0))+'%"></div></div><div class="score">'+Number(item.averageScore||0).toFixed(1)+'</div><div><span class="pill '+(t||'neutral')+'">'+(item.status||'已同步')+'</span></div>';list.append(row)}}
 function renderTrend(data){const chart=byId('trendChart');chart.innerHTML='';const points=data.weeklyTrend||[];byId('trendEmpty').style.display=points.length?'none':'block';for(const point of points){const score=Math.max(0,Math.min(100,Number(point.score)||0));const height=score===0?0:Math.max(6,score);const col=document.createElement('div');col.className='trend-col';col.innerHTML='<div class="muted hide-sm">'+score+'分</div><div class="trend-bar '+(score===0?'zero':'')+'" title="'+point.sessions+' 筆完成" style="height:'+height+'%"></div><div class="trend-label">'+point.date+'</div>';chart.append(col)}}
 function renderTasks(data){const list=byId('taskList');list.innerHTML='';for(const task of data.tasks||[]){const t=task.priority==='高'?'risk':task.priority==='中'?'warn':'neutral';const item=document.createElement('div');item.className='task';item.innerHTML='<div><strong>'+task.title+'</strong><div class="task-meta">'+task.id+' · '+task.owner+' · '+task.due+'</div></div><div><span class="pill '+t+'">'+task.status+'</span></div>';list.append(item)}}
-function renderGames(data){byId('gamesBody').innerHTML=(data.games||[]).map(game=>'<tr><td><strong>'+game.name+'</strong><div class="muted">'+game.sessions+' 次完成</div></td><td>'+game.domain+'</td><td>'+game.completionRate+'%</td><td><span class="pill '+(game.status==='需調整'?'risk':game.status==='觀察'?'warn':'')+'">'+game.status+'</span></td><td>'+game.nextAction+'</td></tr>').join('')}
+function renderGames(data){byId('gamesBody').innerHTML=(data.games||[]).map(game=>'<tr><td><strong>'+game.name+'</strong><div class="muted">'+game.sessions+' 次完成</div></td><td>'+game.domain+'</td><td>'+game.completionRate+'%</td><td><span class="pill '+(game.status==='需調整'?'risk':game.status==='待優化'?'warn':'')+'">'+game.status+'</span></td><td>'+game.nextAction+'</td></tr>').join('')}
 function renderRecent(data){byId('recentBody').innerHTML=(data.recentSessions||[]).map(item=>'<tr><td>'+item.playedAt+'</td><td>'+item.game+'</td><td><strong>'+item.score+'</strong></td><td><span class="pill '+(item.status==='需複核'?'risk':'')+'">'+item.status+'</span></td></tr>').join('')}
 function insightTone(level){if(level==='risk')return 'risk';if(level==='warn')return 'warn';return 'neutral'}
-function domainAdvice(item){if((item.averageScore||0)<60)return (item.label||item.domain)+'分數偏低，建議觀察反應速度與錯誤次數。';if((item.averageScore||0)<75)return (item.label||item.domain)+'需要持續追蹤，先觀察下次紀錄。';return (item.label||item.domain)+'表現穩定，維持目前訓練。'}
-function buildAIInsights(data){const insights=[];const domains=[...(data.cognitiveAverages||[])].sort((a,b)=>(a.averageScore||0)-(b.averageScore||0));if(domains.length){const lowest=domains[0];insights.push({source:'認知能力分布',title:lowest.label||lowest.domain,body:domainAdvice(lowest),level:(lowest.averageScore||0)<60?'risk':(lowest.averageScore||0)<75?'warn':'normal'})}const game=(data.games||[]).find(item=>item.status==='需調整'||item.completionRate<70)||(data.games||[]).find(item=>item.status==='觀察'||item.completionRate<80);if(game){insights.push({source:'遊戲內容管理',title:game.name,body:game.name+'需要檢查難度、提示與完成流程。',level:game.status==='需調整'||game.completionRate<70?'risk':'warn'})}else{insights.push({source:'遊戲內容管理',title:'遊戲狀態',body:'遊戲內容目前穩定，維持觀察即可。',level:'normal'})}const trend=data.weeklyTrend||[];if(trend.length>=2){const previous=trend[trend.length-2];const latest=trend[trend.length-1];const diff=(latest.score||0)-(previous.score||0);insights.push({source:'最近 7 個有紀錄日期',title:'分數趨勢',body:diff<0?'最近分數有下降，建議持續追蹤。':'最近分數穩定，維持目前訓練。',level:diff<0?'warn':'normal'})}const tasks=data.tasks||[];const urgent=tasks.filter(task=>task.priority==='高'||task.status==='需複核').length;insights.push({source:'待處理事項',title:'追蹤任務',body:tasks.length?('目前有 '+tasks.length+' 件待處理，優先複核低分資料。'):'目前沒有待處理事項。',level:urgent?'risk':tasks.length?'warn':'normal'});return insights}
-function renderAIInsights(data){const list=byId('aiInsightList');list.innerHTML='';const insights=buildAIInsights(data);byId('aiEmpty').style.display=insights.length?'none':'block';for(const insight of insights){const t=insightTone(insight.level);const item=document.createElement('article');item.className='card ai-card';item.innerHTML='<div class="ai-card-head"><div class="ai-source">'+insight.source+'</div><span class="pill '+t+'">'+(t==='risk'?'需要觀察':t==='warn'?'持續追蹤':'穩定')+'</span></div><h3>'+insight.title+'</h3><p>'+insight.body+'</p>';list.append(item)}}
+function domainAdvice(item){if((item.averageScore||0)<60)return (item.label||item.domain)+'整體分數偏低，建議檢查反應速度與錯誤次數。';if((item.averageScore||0)<75)return (item.label||item.domain)+'整體略低，建議持續比較後續資料。';return (item.label||item.domain)+'表現穩定，維持目前訓練。'}
+function buildAIInsights(data){const insights=[];const domains=[...(data.cognitiveAverages||[])].sort((a,b)=>(a.averageScore||0)-(b.averageScore||0));if(domains.length){const lowest=domains[0];insights.push({source:'認知能力分布',title:lowest.label||lowest.domain,body:domainAdvice(lowest),level:(lowest.averageScore||0)<60?'risk':(lowest.averageScore||0)<75?'warn':'normal'})}const game=(data.games||[]).find(item=>item.status==='需調整'||item.completionRate<70)||(data.games||[]).find(item=>item.status==='待優化'||item.completionRate<80);if(game){insights.push({source:'遊戲內容管理',title:game.name,body:game.name+'需要檢查難度、提示與完成流程。',level:game.status==='需調整'||game.completionRate<70?'risk':'warn'})}else{insights.push({source:'遊戲內容管理',title:'遊戲狀態',body:'遊戲內容目前穩定，維持追蹤即可。',level:'normal'})}const trend=data.weeklyTrend||[];if(trend.length>=2){const previous=trend[trend.length-2];const latest=trend[trend.length-1];const diff=(latest.score||0)-(previous.score||0);insights.push({source:'最近 7 個有紀錄日期',title:'分數趨勢',body:diff<0?'最近分數有下降，建議持續追蹤。':'最近分數穩定，維持目前訓練。',level:diff<0?'warn':'normal'})}const tasks=data.tasks||[];const urgent=tasks.filter(task=>task.priority==='高'||task.status==='需複核').length;insights.push({source:'待處理事項',title:'追蹤任務',body:tasks.length?('目前有 '+tasks.length+' 件待處理，優先複核低分資料。'):'目前沒有待處理事項。',level:urgent?'risk':tasks.length?'warn':'normal'});return insights}
+function renderAIInsights(data){const list=byId('aiInsightList');list.innerHTML='';const insights=buildAIInsights(data);byId('aiEmpty').style.display=insights.length?'none':'block';for(const insight of insights){const t=insightTone(insight.level);const item=document.createElement('article');item.className='card ai-card';item.innerHTML='<div class="ai-card-head"><div class="ai-source">'+insight.source+'</div><span class="pill '+t+'">'+(t==='risk'?'整體偏低':t==='warn'?'整體略低':'穩定')+'</span></div><h3>'+insight.title+'</h3><p>'+insight.body+'</p>';list.append(item)}}
 function renderAll(data){state.data=data;renderStats(data);renderDomains();renderTrend(data);renderTasks(data);renderGames(data);renderRecent(data);renderAIInsights(data)}
 async function refresh(){byId('loadError').style.display='none';try{const response=await fetch('/api/v1/admin/overview',{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);renderAll(await response.json())}catch(error){byId('loadError').style.display='block';setText('updated','連線失敗')}}
 byId('domainTabs').addEventListener('click',event=>{const button=event.target.closest('.tab');if(!button)return;state.filter=button.dataset.filter;for(const tab of byId('domainTabs').querySelectorAll('.tab'))tab.classList.toggle('active',tab===button);renderDomains()});
