@@ -1009,6 +1009,7 @@ public class GameController : MonoBehaviour
         battleEnded = true;
         UpdateBattleUI(win ? "勝利！" : "戰敗...");
         CompleteCardAssessment(win);
+        LTCReturnHomeButton.Show();
     }
 
     private void CompleteCardAssessment(bool win)

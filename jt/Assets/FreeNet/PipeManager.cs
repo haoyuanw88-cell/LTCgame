@@ -425,6 +425,8 @@ public class PipeManager : MonoBehaviour
             winUI.SetActive(true);
             StartCoroutine(PopUpEffect(winUI.transform));
         }
+
+        LTCReturnHomeButton.Show();
     }
 
     private void CompleteAssessment()

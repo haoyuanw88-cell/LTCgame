@@ -172,6 +172,7 @@ public class SeniorTrueFalseQuiz : MonoBehaviour
 
     private void RestartGame()
     {
+        LTCReturnHomeButton.Hide();
         currentQuestion = 0;
         score = 0;
         trialIndex = 0;
@@ -252,6 +253,7 @@ public class SeniorTrueFalseQuiz : MonoBehaviour
         falseButton.gameObject.SetActive(false);
         restartButton.gameObject.SetActive(true);
         CompleteAssessment();
+        LTCReturnHomeButton.Show();
     }
 
     private void RecordAnswerTrial(Question question, bool playerAnswer, bool isCorrect)
