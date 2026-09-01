@@ -248,6 +248,7 @@ public class SupermarketGame : MonoBehaviour
             cleared = true;
             clearTime = Time.time - startTime;
             CompleteAssessment();
+            LTCReturnHomeButton.Show();
         }
     }
 
