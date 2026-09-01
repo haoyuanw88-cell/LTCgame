@@ -351,7 +351,13 @@ private void BindResultReturnButton()
                 score = 0;
             }
 
-            // 保留目前選取，讓玩家再次點擊同一數字自行取消，而不是整題被強制清空。
+            // 超過目標代表這一題已經作答錯誤。正式結束本題並換下一題，
+            // 避免玩家在知道結果後反覆取消選取來修正答案，也確保結算頁
+            // 的「超過目標」次數與原始題目紀錄一致。
+            RecordRoundSummary(TrialOutcome.Incorrect, "sum_exceeded_target");
+            round++;
+            SavePauseCheckpoint();
+            SpawnRound();
         }
         else
         {
