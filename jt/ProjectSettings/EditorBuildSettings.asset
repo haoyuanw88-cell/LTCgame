@@ -44,6 +44,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/text puzzle/Scenes/TextPuzzleGame.unity
     guid: fe5eb4100584486fb9604086111456d5
+  - enabled: 1
+    path: "Assets/new LTC/\u5BF5\u7269\u7CFB\u7D71/Scenes/PetGarden.unity"
+    guid: 3ca0b39f756ee90408fc26aee0f961a9
   m_configObjects:
     com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

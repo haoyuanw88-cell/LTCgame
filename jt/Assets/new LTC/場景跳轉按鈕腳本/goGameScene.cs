@@ -16,6 +16,12 @@ public class goGameScene : MonoBehaviour
     {
         SceneManager.LoadScene("shop");
     }
+
+public void GoToPetGarden()
+    {
+        SceneManager.LoadScene("PetGarden");
+    }
+
     public void GoToMb()
     {
         SceneManager.LoadScene("mb");
