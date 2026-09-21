@@ -66,11 +66,11 @@ namespace LTC.Audio
             if (Time.unscaledTime < nextScan) return;
             nextScan = Time.unscaledTime + .5f;
             otherMusicPlaying = false;
-            foreach (AudioSource source in Object.FindObjectsByType<AudioSource>(FindObjectsSortMode.None))
+            foreach (AudioSource source in Object.FindObjectsByType<AudioSource>())
                 if (source != music && source != effects && source.loop && source.isPlaying && source.clip && !source.mute && source.volume > .001f)
                     otherMusicPlaying = true;
             if (!supported) return;
-            foreach (Button button in Object.FindObjectsByType<Button>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (Button button in Object.FindObjectsByType<Button>(FindObjectsInactive.Include))
                 if (!button.GetComponent<LTCButtonSound>()) button.gameObject.AddComponent<LTCButtonSound>();
         }
 

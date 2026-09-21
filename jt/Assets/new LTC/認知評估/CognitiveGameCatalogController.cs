@@ -1255,7 +1255,7 @@ private static void SetScoreText(TMP_Text target, CognitiveProfile profile, Cogn
 
     private static void EnsureEventSystem()
     {
-        if (FindFirstObjectByType<EventSystem>() != null) return;
+        if (FindAnyObjectByType<EventSystem>() != null) return;
         var eventSystem = new GameObject("EventSystem", typeof(EventSystem));
         Type inputModule = Type.GetType("UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem");
         if (inputModule != null) eventSystem.AddComponent(inputModule);
@@ -1283,7 +1283,7 @@ private static void SetScoreText(TMP_Text target, CognitiveProfile profile, Cogn
         text.fontStyle = style;
         text.alignment = alignment;
         text.color = textColor;
-        text.enableWordWrapping = true;
+        text.textWrappingMode = TextWrappingModes.Normal;
         text.overflowMode = TextOverflowModes.Ellipsis;
         return text;
     }

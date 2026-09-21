@@ -20,7 +20,7 @@ public class LTCVRSceneRuntimeUI : MonoBehaviour
 
     void EnsureEventSystem()
     {
-        EventSystem existing = FindFirstObjectByType<EventSystem>();
+        EventSystem existing = FindAnyObjectByType<EventSystem>();
         GameObject eventSystemObject = existing == null ? new GameObject("EventSystem") : existing.gameObject;
         if (existing == null) eventSystemObject.AddComponent<EventSystem>();
         StandaloneInputModule oldModule = eventSystemObject.GetComponent<StandaloneInputModule>();

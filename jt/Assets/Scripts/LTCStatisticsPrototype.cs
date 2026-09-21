@@ -160,7 +160,7 @@ public class LTCStatisticsPrototype : MonoBehaviour
             foreach(var image in navImages) image.color=image.name=="統計"?teal:cream;
             foreach(var text in navTexts) text.color=ink;
         }
-        var canvas=UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include,FindObjectsSortMode.None).FirstOrDefault(c=>c.name=="LTC Player ID Canvas");
+        var canvas=UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include).FirstOrDefault(c=>c.name=="LTC Player ID Canvas");
         if(canvas){idCanvas=canvas.gameObject;idWasActive=idCanvas.activeSelf;idCanvas.SetActive(false);}
     }
     void OnDisable()
@@ -289,7 +289,7 @@ public class LTCStatisticsPrototype : MonoBehaviour
         var t=Label(r,"Label",title,24,.04f,.04f,.96f,.96f,true);t.alignment=TextAlignmentOptions.Center;return b;
     }
     void AddIcon(Transform p,string n,Sprite s,float x,float y,float xx,float yy){var go=new GameObject(n,typeof(RectTransform),typeof(Image));go.transform.SetParent(p,false);Rect((RectTransform)go.transform,x,y,xx,yy);var image=go.GetComponent<Image>();image.sprite=s;image.preserveAspect=true;image.raycastTarget=false;}
-    void LateUpdate(){if(!idCanvas){var c=UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include,FindObjectsSortMode.None).FirstOrDefault(x=>x.name=="LTC Player ID Canvas");if(c){idCanvas=c.gameObject;idWasActive=idCanvas.activeSelf;}}if(idCanvas)idCanvas.SetActive(false);}
+    void LateUpdate(){if(!idCanvas){var c=UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include).FirstOrDefault(x=>x.name=="LTC Player ID Canvas");if(c){idCanvas=c.gameObject;idWasActive=idCanvas.activeSelf;}}if(idCanvas)idCanvas.SetActive(false);}
     static void Rect(RectTransform r,float x,float y,float xx,float yy)
     { r.anchorMin=new Vector2(x,y);r.anchorMax=new Vector2(xx,yy);r.offsetMin=Vector2.zero;r.offsetMax=Vector2.zero; }
 }

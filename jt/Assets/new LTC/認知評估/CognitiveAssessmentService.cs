@@ -272,6 +272,7 @@ namespace LTCCognitiveAssessment
             session.endedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             session.result = CognitiveScoring.BuildGameResult(session, domain, conditionEffectMs, difficultyReached);
             repository.Save(session);
+            LTCProgressionService.RecordCompletedGame(session);
             CognitiveApiUploader.Enqueue(session);
             ActiveSessions.Remove(id);
             return session.result;
