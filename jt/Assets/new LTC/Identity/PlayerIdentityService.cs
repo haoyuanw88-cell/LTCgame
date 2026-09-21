@@ -26,6 +26,10 @@ namespace LTC.Identity
         const string DefaultApiBaseUrl = "https://staging-hello-8shi.encr.app";
         const int MaximumRetryDelaySeconds = 60;
         const int HeartbeatIntervalSeconds = 60;
+        const string GoogleRequiredKey = "LTC_Identity_GoogleRequired";
+        const string ExpectedPlayerKey = "LTC_Identity_ExpectedGooglePlayer";
+        public bool RequiresGoogleSignIn => PlayerPrefs.GetInt(GoogleRequiredKey, 0) == 1 && !IsReady;
+        public string ExpectedGooglePlayer => PlayerPrefs.GetString(ExpectedPlayerKey, string.Empty);
         static PlayerIdentityService instance;
         Coroutine signInRoutine;
         Coroutine heartbeatRoutine;
@@ -101,10 +105,30 @@ namespace LTC.Identity
             if (googleSignInRoutine != null) StopCoroutine(googleSignInRoutine);
             IsReady = false;
             PlayerId = string.Empty;
+            PlayerCode = string.Empty;
             AccessToken = string.Empty;
             heartbeatRoutine = null;
             googleSignInRoutine = null;
+            if (PlayerPrefs.GetInt(GoogleRequiredKey, 0) == 1 || AuthProvider == "google")
+            {
+                AuthProvider = "google";
+                signInRoutine = null;
+                IdentityChanged?.Invoke();
+                Debug.LogWarning("請重新使用原本的 Google 帳號登入；不會自動切換成訪客。");
+                return;
+            }
             signInRoutine = StartCoroutine(SignInWithRetry());
+        }
+
+        // This is only a recovery hint, never authentication. The server verifies
+        // Google ownership before issuing a token, and does not merge guest data.
+        public static void RequireExistingGoogleAccount(string expectedPlayerId)
+        {
+            if (!IsValidPlayerId(expectedPlayerId)) throw new ArgumentException("Invalid player ID");
+            PlayerPrefs.SetInt(GoogleRequiredKey, 1);
+            PlayerPrefs.SetString(ExpectedPlayerKey, expectedPlayerId);
+            PlayerPrefs.Save();
+            if (instance != null && Application.isPlaying) instance.Refresh();
         }
 
         public static void SignInWithGoogle(string idToken, string nonce, Action<bool, string> completed)
@@ -120,6 +144,7 @@ namespace LTC.Identity
                 completed?.Invoke(false, "Google 登入正在處理中");
                 return;
             }
+            if (service.signInRoutine != null) { service.StopCoroutine(service.signInRoutine); service.signInRoutine = null; }
             service.googleSignInRoutine = service.StartCoroutine(
                 service.GoogleSignInRoutine(idToken, nonce, completed));
         }
@@ -196,7 +221,8 @@ namespace LTC.Identity
             {
                 idToken = idToken,
                 nonce = nonce,
-                installationUid = InstallationUid,
+                installationUid = string.IsNullOrEmpty(ExpectedGooglePlayer) ? InstallationUid : string.Empty,
+                expectedPlayerId = ExpectedGooglePlayer,
                 displayName = ResolveDisplayName()
             };
             byte[] body = Encoding.UTF8.GetBytes(JsonUtility.ToJson(payload));
@@ -216,6 +242,12 @@ namespace LTC.Identity
 
                     if (IsCompleteSession(response))
                     {
+                        if (!string.IsNullOrEmpty(ExpectedGooglePlayer) && response.playerId != ExpectedGooglePlayer)
+                        {
+                            googleSignInRoutine = null;
+                            completed?.Invoke(false, "登入帳號與原玩家不符，請選擇原本的 Google 帳號。");
+                            yield break;
+                        }
                         if (signInRoutine != null)
                         {
                             StopCoroutine(signInRoutine);
@@ -230,9 +262,15 @@ namespace LTC.Identity
                     }
                 }
 
-                string message = request.responseCode == 401
-                    ? "Google 身分驗證失敗，請重新登入"
-                    : "暫時無法連接登入服務";
+                string message = "暫時無法連接登入服務";
+                BackendLoginError error = null;
+                try { error = JsonUtility.FromJson<BackendLoginError>(request.downloadHandler.text); } catch (Exception) { }
+                if (error != null && error.message != null && error.message.Contains("already belongs to another player"))
+                    message = "此 Google 帳號已綁定其他玩家，恢復已停止；資料未合併。";
+                else if (error != null && error.message != null && error.message.Contains("not authorized for this legacy recovery"))
+                    message = "帳號不符合恢復條件或授權已到期，請聯絡管理員。";
+                else if (request.responseCode == 401)
+                    message = "Google 身分驗證未通過，請重新登入。";
                 Debug.LogWarning($"Google 登入未完成：{request.responseCode} {request.error}");
                 googleSignInRoutine = null;
                 completed?.Invoke(false, message);
@@ -253,7 +291,10 @@ namespace LTC.Identity
                     if (request.responseCode == 401)
                     {
                         string expiredProvider = AuthProvider;
+                        if (expiredProvider == "google") RememberGoogleIdentity(PlayerId);
                         IsReady = false;
+                        PlayerId = string.Empty;
+                        PlayerCode = string.Empty;
                         AccessToken = string.Empty;
                         DeleteCachedSession();
                         heartbeatRoutine = null;
@@ -326,6 +367,7 @@ namespace LTC.Identity
 
         void ApplySession(PlayerSessionResponse response, string provider, bool persist)
         {
+            if (provider == "google") RememberGoogleIdentity(response.playerId);
             PlayerId = response.playerId;
             PlayerCode = response.playerCode;
             AccessToken = response.accessToken;
@@ -337,7 +379,8 @@ namespace LTC.Identity
             if (persist) SaveCachedSession(response, provider);
             if (heartbeatRoutine != null) StopCoroutine(heartbeatRoutine);
             heartbeatRoutine = StartCoroutine(HeartbeatLoop());
-            if (HasCompletedProfile()) SyncCurrentProfile();
+            // A restored account must not be overwritten with another session's
+            // local profile. Profile writes are triggered explicitly by the UI.
             IdentityChanged?.Invoke();
         }
 
@@ -347,6 +390,10 @@ namespace LTC.Identity
             {
                 if (!File.Exists(SessionFilePath)) return false;
                 var cached = JsonUtility.FromJson<CachedSession>(File.ReadAllText(SessionFilePath));
+                if (cached != null && cached.authProvider == "google" && string.IsNullOrEmpty(ExpectedGooglePlayer)) RememberGoogleIdentity(cached.playerId);
+                if (PlayerPrefs.GetInt(GoogleRequiredKey, 0) == 1 &&
+                    (cached == null || cached.authProvider != "google" ||
+                    (!string.IsNullOrEmpty(ExpectedGooglePlayer) && cached.playerId != ExpectedGooglePlayer))) return false;
                 // Sessions cached before the P000000 migration may not contain a
                 // textual playerId, but playerCode already carries the same key.
                 if (cached != null && !IsValidPlayerId(cached.playerId) && IsValidPlayerId(cached.playerCode))
@@ -397,8 +444,8 @@ namespace LTC.Identity
                 };
                 string temporaryPath = SessionFilePath + ".tmp";
                 File.WriteAllText(temporaryPath, JsonUtility.ToJson(cached), Encoding.UTF8);
-                if (File.Exists(SessionFilePath)) File.Delete(SessionFilePath);
-                File.Move(temporaryPath, SessionFilePath);
+                if (File.Exists(SessionFilePath)) File.Replace(temporaryPath, SessionFilePath, SessionFilePath + ".previous");
+                else File.Move(temporaryPath, SessionFilePath);
             }
             catch (Exception exception)
             {
@@ -410,6 +457,13 @@ namespace LTC.Identity
         {
             try { if (File.Exists(SessionFilePath)) File.Delete(SessionFilePath); }
             catch (Exception exception) { Debug.LogWarning("無法清除過期登入狀態：" + exception.Message); }
+        }
+
+        static void RememberGoogleIdentity(string playerId)
+        {
+            PlayerPrefs.SetInt(GoogleRequiredKey, 1);
+            if (IsValidPlayerId(playerId)) PlayerPrefs.SetString(ExpectedPlayerKey, playerId);
+            PlayerPrefs.Save();
         }
 
         static bool IsCompleteSession(PlayerSessionResponse response)
@@ -475,8 +529,12 @@ namespace LTC.Identity
         }
 
         [Serializable]
+        sealed class BackendLoginError { public string code; public string message; }
+
+        [Serializable]
         sealed class GoogleSignInRequest
         {
+            public string expectedPlayerId;
             public string idToken;
             public string nonce;
             public string installationUid;

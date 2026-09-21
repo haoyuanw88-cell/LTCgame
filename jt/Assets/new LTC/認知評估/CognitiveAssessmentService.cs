@@ -283,7 +283,7 @@ namespace LTCCognitiveAssessment
             return CognitiveScoring.BuildProfile(id, LoadCurrentUserHistory(id, limit));
         }
 
-        public static float[] BuildDailyTrend(CognitiveDomain? domain = null, int days = 30)
+        public static float[] BuildDailyTrend(CognitiveDomain? domain = null, int days = 30, string gameId = null)
         {
             days = Mathf.Clamp(days, 2, 365);
             string userId = ResolveUserId(null);
@@ -295,7 +295,8 @@ namespace LTCCognitiveAssessment
             var matchingSessions = sessions
                 .Where(session => session != null && session.completed && session.result != null &&
                                   session.endedAtUnixMs > 0 &&
-                                  (!domain.HasValue || session.result.primaryDomain == domain.Value))
+                                  (!domain.HasValue || session.result.primaryDomain == domain.Value) &&
+                                  (string.IsNullOrEmpty(gameId) || session.gameId == gameId))
                 .ToList();
             var currentProtocolSessions = matchingSessions
                 .Where(CognitiveScoring.IsCurrentTrendEligible)
@@ -323,6 +324,12 @@ namespace LTCCognitiveAssessment
         }
 
         public static string CurrentUserId => ResolveUserId(null);
+
+        public static List<CognitiveAssessmentSession> GetStatisticsHistory(int limit = 500)
+        {
+            return LoadCurrentUserHistory(ResolveUserId(null), limit)
+                .Where(s => s.completed && s.endedAtUnixMs > 0).ToList();
+        }
 
         static List<CognitiveAssessmentSession> LoadCurrentUserHistory(string userId, int limit)
         {

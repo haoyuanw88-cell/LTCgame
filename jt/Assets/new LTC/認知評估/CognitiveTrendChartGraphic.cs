@@ -44,7 +44,7 @@ protected override void OnPopulateMesh(VertexHelper vh)
         }
 
         AddLine(vh, new Vector2(left, bottom), new Vector2(right, bottom), 3f,
-            new Color(lineColor.r, lineColor.g, lineColor.b, 0.75f));
+            gridColor);
         if (values == null || values.Length < 2) return;
 
         bool hasPrevious = false;

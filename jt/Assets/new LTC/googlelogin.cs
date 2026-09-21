@@ -274,7 +274,9 @@ public sealed class googlelogin : MonoBehaviour
         SetContinueInteractable(signedInWithGoogle);
         SetStatus(signedInWithGoogle
             ? "Google 登入完成，可以開始遊戲"
-            : "請先使用 Google 帳號登入");
+            : service != null && service.RequiresGoogleSignIn
+                ? "請用原 Google 帳號恢復 " + service.ExpectedGooglePlayer
+                : "請先使用 Google 帳號登入");
     }
 
     bool TryValidateSettings(out Uri callbackUri, out string error)
