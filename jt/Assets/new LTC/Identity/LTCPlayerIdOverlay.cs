@@ -96,6 +96,12 @@ namespace LTC.Identity
             shadow.effectDistance = new Vector2(1f, -1f);
         }
 
+        void LateUpdate()
+        {
+            // GameScene displays the authenticated ID in the profile card.
+            if (idText != null) idText.enabled = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "GameScene";
+        }
+
         void RefreshText()
         {
             if (idText == null) return;
