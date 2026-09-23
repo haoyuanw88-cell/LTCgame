@@ -63,7 +63,7 @@ public sealed class LTCProgressionPanel : MonoBehaviour
         Transform header = canvas.Find("遊戲首頁/玩家資訊列");
         if (header == null) return;
 
-        Button open = Button(header, "成就任務", "成就任務", green);
+        Button open = Button(header, "每日任務與成就", "每日任務與成就", green);
         SetRect(open.GetComponent<RectTransform>(), new Vector2(0.59f, 0.18f), new Vector2(0.765f, 0.82f));
         open.onClick.AddListener(Open);
 

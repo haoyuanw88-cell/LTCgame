@@ -138,7 +138,7 @@ public sealed class LTCGardenShopController : MonoBehaviour
         }
 
         AddDecoration(background.transform, "左上葉片", "花  葉", 48, new Vector2(0.015f, 0.88f), new Vector2(0.18f, 0.98f));
-        AddDecoration(background.transform, "右下葉片", "葉  花", 48, new Vector2(0.82f, 0.02f), new Vector2(0.985f, 0.12f));
+        AddDecoration(background.transform, "右下葉片", "  ", 48, new Vector2(0.82f, 0.02f), new Vector2(0.985f, 0.12f));
 
         GameObject header = Panel(canvasObject.transform, "木牌標題", parchment);
         SetRect(header.GetComponent<RectTransform>(), new Vector2(0.035f, 0.84f), new Vector2(0.965f, 0.965f));
