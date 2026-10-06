@@ -19,7 +19,27 @@ namespace MCPForUnity.Editor.Services.Server
         /// <inheritdoc/>
         public string GetPidDirectory()
         {
-            return Path.Combine(GetProjectRootPath(), "Library", "MCPForUnity", "RunState");
+            return Path.Combine(GetRuntimeDirectory(GetProjectRootPath()), "RunState");
+        }
+
+        internal static string GetRuntimeDirectory(string projectRoot)
+        {
+#if UNITY_EDITOR_WIN
+            // Child processes cannot write inside Documents/OneDrive when Windows
+            // Controlled Folder Access is enabled. Keep their state outside the project.
+            // A stable project hash preserves isolation across projects and domain reloads.
+            string normalizedRoot = Path.GetFullPath(projectRoot)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .ToUpperInvariant();
+            using (var sha = SHA256.Create())
+            {
+                string projectId = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(normalizedRoot)))
+                    .Replace("-", "").ToLowerInvariant();
+                return Path.Combine(Path.GetTempPath(), "MCPForUnity", projectId);
+            }
+#else
+            return Path.Combine(projectRoot, "Library", "MCPForUnity");
+#endif
         }
 
         /// <inheritdoc/>

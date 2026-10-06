@@ -233,7 +233,7 @@ namespace MCPForUnity.Editor.Services
 
         /// <summary>
         /// Start the local HTTP server headless (no terminal window), redirecting its
-        /// stdout/stderr to Library/MCPForUnity/Logs/server-launch-{port}.log.
+        /// stdout/stderr to the project-specific MCP runtime log directory.
         /// Stops any existing server on the port and clears stale build artifacts first.
         /// </summary>
         public bool StartLocalHttpServer(bool quiet = false)
@@ -1011,7 +1011,7 @@ namespace MCPForUnity.Editor.Services
 
         private string GetLocalHttpServerLaunchLogPath(int port)
         {
-            string dir = Path.Combine(_terminalLauncher.GetProjectRootPath(), "Library", "MCPForUnity", "Logs");
+            string dir = Path.Combine(PidFileManager.GetRuntimeDirectory(_terminalLauncher.GetProjectRootPath()), "Logs");
             return Path.Combine(dir, $"server-launch-{port}.log");
         }
 
