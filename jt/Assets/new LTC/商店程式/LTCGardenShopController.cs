@@ -430,6 +430,8 @@ public sealed class LTCGardenShopController : MonoBehaviour
         TMP_Text glow = Text(overlay.transform, "中央光芒", "★", 420, FontStyles.Bold,
             TextAlignmentOptions.Center);
         glow.color = new Color(1f, 0.72f, 0.20f, 0.13f);
+        glow.overflowMode = TextOverflowModes.Overflow;
+        glow.maskable = false;
         SetRect(glow.rectTransform, new Vector2(0.23f, 0.08f), new Vector2(0.77f, 0.92f));
 
         TMP_Text overlayTitle = Text(overlay.transform, "抽獎標題", "驚喜盲盒開啟中…", 48,
@@ -446,6 +448,7 @@ public sealed class LTCGardenShopController : MonoBehaviour
         boxObject.transform.SetParent(overlay.transform, false);
         Image boxImage = boxObject.GetComponent<Image>();
         boxImage.preserveAspect = true;
+        boxImage.maskable = false;
         boxImage.raycastTarget = false;
         SetRect(boxImage.rectTransform, new Vector2(0.34f, 0.22f), new Vector2(0.66f, 0.70f));
 
@@ -461,7 +464,10 @@ public sealed class LTCGardenShopController : MonoBehaviour
             starRect.anchorMin = new Vector2(0.5f, 0.46f);
             starRect.anchorMax = new Vector2(0.5f, 0.46f);
             starRect.pivot = new Vector2(0.5f, 0.5f);
-            starRect.sizeDelta = new Vector2(70f, 70f);
+            starRect.sizeDelta = new Vector2(128f, 128f);
+            star.overflowMode = TextOverflowModes.Overflow;
+            star.extraPadding = true;
+            star.maskable = false;
             starRect.anchoredPosition = Vector2.zero;
             star.color = new Color(1f, i % 2 == 0 ? 0.78f : 0.48f, 0.12f, 0f);
             stars.Add(star);
@@ -529,7 +535,11 @@ public sealed class LTCGardenShopController : MonoBehaviour
             for (int i = 0; i < stars.Count; i++)
             {
                 float stagger = Mathf.Clamp01((t - i * 0.018f) / 0.68f);
-                float distance = Mathf.Lerp(12f, 255f + (i % 3) * 28f, Mathf.SmoothStep(0f, 1f, stagger));
+                Rect screenRect = ((RectTransform)overlay.transform).rect;
+                // Keep rotating stars inside the viewport at every aspect ratio.
+                float safeRadius = Mathf.Max(12f, Mathf.Min(screenRect.width * .5f,
+                    screenRect.height * .46f) - 105f);
+                float distance = Mathf.Lerp(12f, Mathf.Min(255f + (i % 3) * 28f, safeRadius), Mathf.SmoothStep(0f, 1f, stagger));
                 stars[i].rectTransform.anchoredPosition = starDirections[i] * distance;
                 Color color = stars[i].color;
                 color.a = Mathf.Sin(stagger * Mathf.PI) * 0.95f;

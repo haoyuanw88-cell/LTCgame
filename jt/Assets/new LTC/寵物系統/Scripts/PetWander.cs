@@ -2,19 +2,21 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Runtime movement only. Visual frames are authored in an AnimatorController,
-/// so the player never creates Sprite objects or loads texture sheets at runtime.
+/// Wandering and local avoidance, with authored or collection sprite animation.
 /// </summary>
 public sealed class PetWander : MonoBehaviour
 {
     public bool IsWalking => isWalking;
     public string PetId => !string.IsNullOrEmpty(collectionId) ? collectionId : name.Contains("貓") ? "cat" : name.Contains("兔") ? "rabbit" : name;
     public string DisplayName => !string.IsNullOrEmpty(collectionName) ? collectionName : PetId == "cat" ? "貓咪" : PetId == "rabbit" ? "兔子" : name;
-    public Sprite Portrait => spriteRenderer == null ? null : spriteRenderer.sprite;
+    public Sprite Portrait => idleSprite != null ? idleSprite : spriteRenderer == null ? null : spriteRenderer.sprite;
     public bool IsCollectionPet => !string.IsNullOrEmpty(collectionId);
     string collectionId, collectionName;
     Sprite[] collectionFrames;
     Bounds collectionVisibleBounds;
+    Sprite idleSprite, authoredWalkingSprite;
+    Vector3 walkingScale, walkingOffset, idleScale, idleOffset;
+    bool displayingIdle;
     int collectionFrame;
     float nextCollectionFrame;
     private static readonly int WalkingHash = Animator.StringToHash("Walking");
@@ -46,6 +48,9 @@ public sealed class PetWander : MonoBehaviour
     private float resumeWalkingAt;
     private bool isWalking;
     private bool usesWalkingParameter;
+    private Vector2 blockedHeading;
+    private float blockedHeadingUntil;
+    private float nextAvoidanceRetry;
 
     private void Awake()
     {
@@ -85,7 +90,19 @@ public sealed class PetWander : MonoBehaviour
                 break;
             }
         }
+        if (LTCPetCollectionService.HasUnifiedSheet(PetId))
+        {
+            foreach (LTCPetDefinition pet in LTCPetCollectionService.AllPets)
+                if (pet.id == PetId)
+                {
+                    if (animator != null) animator.enabled = false;
+                    usesWalkingParameter = false;
+                    ConfigureCollectionPet(pet, LTCPetCollectionService.GetFrames(pet));
+                    return;
+                }
+        }
         if (animator != null) FitVisualToTargetHeight();
+        if (animator != null) SetupIdleVisual();
     }
 
     public void ConfigureCollectionPet(LTCPetDefinition definition, Sprite[] frames)
@@ -93,7 +110,7 @@ public sealed class PetWander : MonoBehaviour
         collectionId = definition.id;
         collectionName = definition.displayName;
         collectionFrames = frames;
-        sourceFacesRight = definition.id != "cat";
+        sourceFacesRight = LTCPetCollectionService.HasUnifiedSheet(definition.id) || definition.id != "cat";
         if (frames != null && frames.Length > 0)
         {
             spriteRenderer.sprite = frames[0];
@@ -103,15 +120,64 @@ public sealed class PetWander : MonoBehaviour
                 for (int x = 0; x < frames[0].texture.width; x++)
                     if (pixels[y * frames[0].texture.width + x].a > 20) { min = Mathf.Min(min, y); max = Mathf.Max(max, y); minX = Mathf.Min(minX, x); maxX = Mathf.Max(maxX, x); }
             float visibleHeight = max >= min ? (max - min + 1) / frames[0].pixelsPerUnit : frames[0].bounds.size.y;
-            float scale = targetHeight / visibleHeight;
-            spriteRenderer.transform.localScale = new Vector3(scale, scale, 1f);
+            float visibleWidth = (maxX - minX + 1f) / frames[0].pixelsPerUnit;
+            float scale = targetHeight / Mathf.Max(visibleHeight, visibleWidth);
+            // Authored starter pets may have a scaled Visual parent. Normalize
+            // the visible character in WORLD units, not just its child scale.
+            Vector3 inherited = spriteRenderer.transform.parent != null
+                ? spriteRenderer.transform.parent.lossyScale : Vector3.one;
+            spriteRenderer.transform.localScale = new Vector3(
+                scale / Mathf.Max(.001f, Mathf.Abs(inherited.x)),
+                scale / Mathf.Max(.001f, Mathf.Abs(inherited.y)), 1f);
             float ppu = frames[0].pixelsPerUnit;
             collectionVisibleBounds = new Bounds(new Vector3((minX + maxX + 1f) * .5f / ppu - frames[0].bounds.extents.x,
                 (min + max + 1f) * .5f / ppu - frames[0].bounds.extents.y, 0f),
                 new Vector3((maxX - minX + 1f) / ppu, visibleHeight, .01f));
         }
         PetHungerService.RemainingSeconds(PetId);
+        SetupIdleVisual();
         StartPause(false);
+    }
+
+    private void SetupIdleVisual()
+    {
+        authoredWalkingSprite = spriteRenderer.sprite;
+        walkingScale = spriteRenderer.transform.localScale;
+        walkingOffset = spriteRenderer.transform.localPosition;
+        idleSprite = PetId == "rabbit" ? authoredWalkingSprite : LTCPetCollectionService.GetIdleSprite(PetId);
+        if (idleSprite == null) return;
+        Bounds walk = LTCPetCollectionService.GetVisibleBounds(authoredWalkingSprite);
+        Bounds idle = LTCPetCollectionService.GetVisibleBounds(idleSprite);
+        // Sitting front poses are tall while side-view cats/ferrets are long.
+        // Match the head, not the total bounding box, to avoid a sudden growth.
+        float factor = LTCPetCollectionService.HasUnifiedSheet(PetId) || PetId == "rabbit" ? 1f : LTCPetCollectionService.GetHeadWidth(authoredWalkingSprite) /
+            Mathf.Max(.01f, LTCPetCollectionService.GetHeadWidth(idleSprite));
+        idleScale = new Vector3(walkingScale.x * factor,walkingScale.y * factor,walkingScale.z);
+        idleOffset = walkingOffset;
+        idleOffset.y += walk.min.y * walkingScale.y - idle.min.y * idleScale.y;
+    }
+
+    // Animator updates after Update; apply the separate front pose afterwards.
+    private void LateUpdate()
+    {
+        if (spriteRenderer == null || idleSprite == null) return;
+        if (!isWalking)
+        {
+            spriteRenderer.sprite = idleSprite;
+            spriteRenderer.flipX = false;
+            spriteRenderer.transform.localScale = idleScale;
+            spriteRenderer.transform.localPosition = idleOffset;
+            displayingIdle = true;
+        }
+    }
+
+    private void RestoreWalkingVisual()
+    {
+        if (!displayingIdle) return;
+        spriteRenderer.sprite = collectionFrames != null && collectionFrames.Length > 0 ? collectionFrames[0] : authoredWalkingSprite;
+        spriteRenderer.transform.localScale = walkingScale;
+        spriteRenderer.transform.localPosition = walkingOffset;
+        displayingIdle = false;
     }
 
     private void OnEnable()
@@ -143,8 +209,12 @@ public sealed class PetWander : MonoBehaviour
         Vector3 nextPosition = Vector3.MoveTowards(beforeMove, destination, walkSpeed * Time.deltaTime);
         if (!CanMoveTo(nextPosition))
         {
-            StartPause(true);
-            return;
+            // Collision is a route change, not the end of a walk. Keep the
+            // walking animation and do not reset its frame or rest timer.
+            if (Time.time >= nextAvoidanceRetry)
+                RedirectAfterCollision(destination - beforeMove);
+            nextPosition = Vector3.MoveTowards(beforeMove, destination, walkSpeed * Time.deltaTime);
+            if (!CanMoveTo(nextPosition)) return; // Fully surrounded: never walk through a pet.
         }
         transform.position = nextPosition;
         UpdateFacing(destination.x - beforeMove.x);
@@ -169,16 +239,85 @@ public sealed class PetWander : MonoBehaviour
                 Random.Range(walkMin.y, walkMax.y),
                 transform.position.z);
 
-            if (Vector2.Distance(candidate, transform.position) >= 1f && IsClearOfOtherPets(candidate))
-                break;
+            if (Vector2.Distance(candidate, transform.position) >= 1f && CanTraverse(transform.position, candidate))
+            {
+                BeginWalk(candidate);
+                return;
+            }
         }
+        // Random destinations can all be behind obstacles. Search headings
+        // instead of accepting the last unsafe random candidate.
+        if (!TryFindClearDirection(Vector2.right, out candidate))
+        {
+            resumeWalkingAt = Time.time + .2f;
+            return;
+        }
+        BeginWalk(candidate);
+    }
 
+    private void BeginWalk(Vector3 candidate)
+    {
         destination = candidate;
+        RestoreWalkingVisual();
         isWalking = true;
         if (usesWalkingParameter)
             animator.SetBool(WalkingHash, true);
         else if (animator != null)
             animator.speed = 1f;
+    }
+
+    private bool RedirectAfterCollision(Vector3 rejectedDirection)
+    {
+        blockedHeading = ((Vector2)rejectedDirection).normalized;
+        blockedHeadingUntil = Time.time + 1f;
+        nextAvoidanceRetry = Time.time + .12f;
+        Vector3 candidate;
+        if (!TryFindClearDirection(blockedHeading, out candidate)) return false;
+        destination = candidate;
+        UpdateFacing(destination.x - transform.position.x);
+        return true;
+    }
+
+    private bool TryFindClearDirection(Vector2 reference, out Vector3 candidate)
+    {
+        candidate = transform.position;
+        if (reference.sqrMagnitude < .001f) reference = Vector2.right;
+        float baseAngle = Mathf.Atan2(reference.y, reference.x);
+        // Stable left/right preference avoids frame-to-frame random shaking.
+        float side = ActivePets.IndexOf(this) % 2 == 0 ? 1f : -1f;
+        for (int distancePass = 0; distancePass < 3; distancePass++)
+        {
+            float distance = distancePass == 0 ? 1.5f : distancePass == 1 ? .6f : .2f;
+            for (int step = 0; step < 24; step++)
+            {
+                int offset = step == 0 ? 0 : (step + 1) / 2 * (step % 2 == 1 ? 1 : -1);
+                float angle = baseAngle + offset * 15f * side * Mathf.Deg2Rad;
+                Vector2 direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                if (Time.time < blockedHeadingUntil && Vector2.Dot(direction, blockedHeading) > .85f) continue;
+                Vector3 end = transform.position + (Vector3)(direction * distance);
+                end.x = Mathf.Clamp(end.x, walkMin.x, walkMax.x);
+                end.y = Mathf.Clamp(end.y, walkMin.y, walkMax.y);
+                Vector2 actualDirection = (Vector2)(end - transform.position);
+                if (actualDirection.magnitude < .1f) continue;
+                // Clamping at the garden edge must not bend a safe heading
+                // back into the direction that just hit another pet.
+                if (Time.time < blockedHeadingUntil && Vector2.Dot(actualDirection.normalized, blockedHeading) > .85f) continue;
+                if (!CanTraverse(transform.position, end)) continue;
+                candidate = end;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private bool CanTraverse(Vector3 start, Vector3 end)
+    {
+        // Check the whole route, not just its destination. Short steps prevent
+        // choosing an endpoint on the other side of an intervening pet.
+        int steps = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(start, end) / .08f));
+        for (int i = 1; i <= steps; i++)
+            if (!CanMoveTo(Vector3.Lerp(start, end, (float)i / steps))) return false;
+        return true;
     }
 
     private void StartPause(bool afterWalking)
@@ -204,21 +343,6 @@ public sealed class PetWander : MonoBehaviour
         resumeWalkingAt = Time.time + Random.Range(low, Mathf.Max(low, high));
     }
 
-    private bool IsClearOfOtherPets(Vector3 candidate)
-    {
-        float minimumDistance = separationRadius * 1.25f;
-        for (int i = 0; i < ActivePets.Count; i++)
-        {
-            PetWander other = ActivePets[i];
-            if (other == null || other == this || !other.isActiveAndEnabled)
-                continue;
-
-            if (Vector2.Distance(candidate, other.transform.position) < minimumDistance)
-                return false;
-        }
-        return true;
-    }
-
     // Test the actual visible rectangles, not a fixed distance between root pivots.
     // Includes vertical offsets from transparent padding and differently sized pets.
     private bool CanMoveTo(Vector3 position)
@@ -241,11 +365,11 @@ public sealed class PetWander : MonoBehaviour
 
     private Bounds VisibleBounds()
     {
-        if (!IsCollectionPet) return spriteRenderer.bounds;
         Transform visual = spriteRenderer.transform;
         Vector3 scale = visual.lossyScale;
-        return new Bounds(visual.TransformPoint(collectionVisibleBounds.center),
-            Vector3.Scale(collectionVisibleBounds.size, new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), 1f)));
+        Bounds bounds = LTCPetCollectionService.GetVisibleBounds(spriteRenderer.sprite);
+        return new Bounds(visual.TransformPoint(bounds.center),
+            Vector3.Scale(bounds.size, new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), 1f)));
     }
 
     private void ResolvePetOverlap()
@@ -274,16 +398,16 @@ public sealed class PetWander : MonoBehaviour
             return;
 
         Vector3 position = transform.position;
+        Vector3 rejectedDirection = destination - position;
         Vector2 push = pushDirection;
         position.x = Mathf.Clamp(position.x + push.x, walkMin.x, walkMax.x);
         position.y = Mathf.Clamp(position.y + push.y, walkMin.y, walkMax.y);
         transform.position = position;
 
-        // Nudge the current route away too, otherwise the pet immediately walks
-        // back into the same collision and appears to vibrate.
+        // Keep walking, but replace the blocked route after separation.
         if (isWalking)
         {
-            StartPause(true);
+            RedirectAfterCollision(rejectedDirection);
         }
     }
 
@@ -314,8 +438,12 @@ public sealed class PetWander : MonoBehaviour
         if (currentSprite == null || currentSprite.bounds.size.y <= 0.001f)
             return;
 
-        float scale = targetHeight / currentSprite.bounds.size.y;
         Transform visualContainer = spriteRenderer.transform.parent;
-        visualContainer.localScale = new Vector3(scale, scale, 1f);
+        Bounds visible = LTCPetCollectionService.GetVisibleBounds(currentSprite);
+        Vector3 worldScale = spriteRenderer.transform.lossyScale;
+        float worldSize = Mathf.Max(visible.size.x * Mathf.Abs(worldScale.x), visible.size.y * Mathf.Abs(worldScale.y));
+        float factor = targetHeight / Mathf.Max(.01f, worldSize);
+        Vector3 scale = visualContainer.localScale;
+        visualContainer.localScale = new Vector3(scale.x * factor, scale.y * factor, scale.z);
     }
 }
