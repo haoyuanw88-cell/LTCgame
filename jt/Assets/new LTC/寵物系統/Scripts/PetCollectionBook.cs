@@ -35,6 +35,8 @@ public sealed class PetCollectionBook : MonoBehaviour
         if (!garden) return;
         var management = garden.Find("Pet Management Button")?.GetComponent<Button>();
         if (!management) return;
+        TMP_Text managementLabel = management.GetComponentInChildren<TMP_Text>(true);
+        if (managementLabel != null) roundedFont = managementLabel.font;
         BuildLauncher(management);
         BuildModal();
         EnsureCatalog();
@@ -62,7 +64,18 @@ public sealed class PetCollectionBook : MonoBehaviour
         r.anchoredPosition=original.anchoredPosition+new Vector2(710,0);
         var image=go.GetComponent<Image>();image.sprite=source.image.sprite;image.preserveAspect=true;
         launcher=go.GetComponent<Button>();launcher.targetGraphic=image;
-        var label=Text(go.transform,"圖鑑",40);Fill(label.rectTransform,.12f,.24f,.9f,.76f);
+        TMP_Text sourceLabel = source.GetComponentInChildren<TMP_Text>(true);
+        var label=Text(go.transform,"圖鑑",39);
+        if (sourceLabel != null)
+        {
+            label.font = sourceLabel.font;
+            label.fontStyle = sourceLabel.fontStyle;
+            label.color = sourceLabel.color;
+            label.enableAutoSizing = sourceLabel.enableAutoSizing;
+            label.fontSizeMin = sourceLabel.fontSizeMin;
+            label.fontSizeMax = sourceLabel.fontSizeMax;
+        }
+        Fill(label.rectTransform,.30f,.18f,.94f,.82f);
         launcher.onClick.AddListener(Open);
     }
 

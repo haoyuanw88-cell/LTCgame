@@ -82,7 +82,9 @@ public sealed class PetGardenPanels : MonoBehaviour
         meatSprite = Resources.Load<Sprite>("PetUI/meat");
         management.onClick.AddListener(OpenStatus);
         BuildBagButton(management);
+        MatchNavigationText(canvas.Find("Return Main Menu Button")?.GetComponent<Button>(), management);
         BuildPopup();
+        BuildResetButton(management);
     }
 
     void OnDestroy()
@@ -109,12 +111,66 @@ public sealed class PetGardenPanels : MonoBehaviour
         rect.anchoredPosition = new Vector2(source.anchoredPosition.x + 355f, source.anchoredPosition.y);
         rect.sizeDelta = source.sizeDelta;
         var icon = CreateImage(button.transform, "背包圖示", Resources.Load<Sprite>("PetUI/backpack"), Color.white);
-        Place(icon.rectTransform, .08f, .29f, .38f, .77f);
+        Place(icon.rectTransform, .08f, .25f, .29f, .75f);
         icon.preserveAspect = true;
-        var label = CreateText(button.transform, "文字", "我的背包", 40, TextAlignmentOptions.Center);
-        Place(label.rectTransform, .38f, .24f, .90f, .76f);
+
+        TMP_Text sourceLabel = management.GetComponentInChildren<TMP_Text>(true);
+        var label = CreateText(button.transform, "文字", "我的背包", 39, TextAlignmentOptions.Center);
+        if (sourceLabel != null)
+        {
+            label.font = sourceLabel.font;
+            label.fontStyle = sourceLabel.fontStyle;
+            label.color = sourceLabel.color;
+            label.enableAutoSizing = sourceLabel.enableAutoSizing;
+            label.fontSizeMin = sourceLabel.fontSizeMin;
+            label.fontSizeMax = sourceLabel.fontSizeMax;
+        }
+        Place(label.rectTransform, .30f, .18f, .94f, .82f);
         button.onClick.AddListener(OpenBag);
     }
+
+    void MatchNavigationText(Button target, Button source)
+    {
+        if (target == null || source == null) return;
+        TMP_Text targetLabel = target.GetComponentInChildren<TMP_Text>(true);
+        TMP_Text sourceLabel = source.GetComponentInChildren<TMP_Text>(true);
+        if (targetLabel == null || sourceLabel == null) return;
+
+        targetLabel.font = sourceLabel.font;
+        targetLabel.fontStyle = sourceLabel.fontStyle;
+        targetLabel.fontSize = sourceLabel.fontSize;
+        targetLabel.color = sourceLabel.color;
+        targetLabel.alignment = TextAlignmentOptions.Center;
+        targetLabel.enableAutoSizing = sourceLabel.enableAutoSizing;
+        targetLabel.fontSizeMin = sourceLabel.fontSizeMin;
+        targetLabel.fontSizeMax = sourceLabel.fontSizeMax;
+        Place(targetLabel.rectTransform, .30f, .18f, .94f, .82f);
+    }
+
+    void BuildResetButton(Button source)
+    {
+        var button = CreateButton(canvas, "測試用寵物重置按鈕", source.GetComponent<Image>().sprite);
+        RectTransform rect = (RectTransform)button.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = new Vector2(24f, -24f);
+        rect.sizeDelta = new Vector2(310f, 112f);
+        button.image.color = new Color(1f, .84f, .78f);
+
+        TMP_Text sourceLabel = source.GetComponentInChildren<TMP_Text>(true);
+        var label = CreateText(button.transform, "文字", "測試：重置寵物", 30, TextAlignmentOptions.Center);
+        if (sourceLabel != null)
+        {
+            label.font = sourceLabel.font;
+            label.fontStyle = sourceLabel.fontStyle;
+            label.color = sourceLabel.color;
+        }
+        label.fontSizeMin = 23f;
+        label.fontSizeMax = 30f;
+        Place(label.rectTransform, .17f, .16f, .94f, .84f);
+        button.onClick.AddListener(OpenPetResetConfirmation);
+    }
+
 
     void BuildPopup()
     {
@@ -397,6 +453,42 @@ public sealed class PetGardenPanels : MonoBehaviour
             bool success = PetHungerService.TryFeed(id, out string message);
             question.text = message;
             if (success) { yes.interactable = false; yesText.text = "已餵食"; }
+            noText.text = "返回花園";
+        });
+    }
+
+    void OpenPetResetConfirmation()
+    {
+        showingBag = true;
+        statusViews.Clear();
+        ClearRows();
+        Show("測試用寵物重置", "只會清除已擁有寵物，不影響金幣、背包或成就");
+
+        var question = CreateText(rows, "重置確認",
+            "確定要清空目前擁有的所有寵物嗎？", 46, TextAlignmentOptions.Center);
+        Place(question.rectTransform, .05f, .53f, .95f, .82f);
+
+        var yes = CreateButton(rows, "確認重置寵物", null);
+        yes.image.color = new Color(1f, .72f, .66f);
+        Place((RectTransform)yes.transform, .12f, .17f, .46f, .40f);
+        var yesText = CreateText(yes.transform, "文字", "確認清空", 38, TextAlignmentOptions.Center);
+        Place(yesText.rectTransform, 0, 0, 1, 1);
+
+        var no = CreateButton(rows, "取消重置", null);
+        no.image.color = Sage;
+        Place((RectTransform)no.transform, .54f, .17f, .88f, .40f);
+        var noText = CreateText(no.transform, "文字", "取消", 38, TextAlignmentOptions.Center);
+        Place(noText.rectTransform, 0, 0, 1, 1);
+        no.onClick.AddListener(() => overlay.SetActive(false));
+
+        yes.onClick.AddListener(() =>
+        {
+            int removed = LTCPetCollectionService.ResetOwnedPetsForTesting();
+            question.text = removed > 0
+                ? "已清除 " + removed + " 隻寵物。"
+                : "目前沒有可清除的寵物。";
+            yes.interactable = false;
+            yesText.text = "已完成";
             noText.text = "返回花園";
         });
     }

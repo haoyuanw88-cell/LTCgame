@@ -13,11 +13,17 @@ public sealed class PetGardenCameraDrag : MonoBehaviour
     [SerializeField, Min(0.1f)] private float dragSpeed = 1f;
     [SerializeField] private bool ignorePointerOverUI = true;
     [SerializeField, Range(0.6f, 0.95f)] private float visibleGrassFraction = 0.85f;
+    [Header("滾輪縮放")]
+    [SerializeField, Min(0.5f)] private float minimumOrthographicSize = 2.4f;
+    [SerializeField, Min(0.05f)] private float zoomStep = .55f;
+
 
     private Camera targetCamera;
     private Vector2 lastPointerPosition;
     private bool isDragging;
     private float cameraZ;
+    private float maximumOrthographicSize;
+
 
     public SpriteRenderer BackgroundRenderer
     {
@@ -38,12 +44,14 @@ public sealed class PetGardenCameraDrag : MonoBehaviour
     private void Start()
     {
         FitCameraInsideBackground();
+        maximumOrthographicSize = targetCamera != null ? targetCamera.orthographicSize : 5.4f;
         ClampToBackground();
     }
 
     private void LateUpdate()
     {
         if(PetCollectionBook.ModalOpen){isDragging=false;return;}
+        HandleMouseWheelZoom();
         if (!TryReadPointer(out Vector2 pointerPosition, out bool pressedThisFrame, out bool isPressed, out bool releasedThisFrame))
         {
             isDragging = false;
@@ -111,6 +119,37 @@ public sealed class PetGardenCameraDrag : MonoBehaviour
 
         if (fittedSize > 0.1f && targetCamera.orthographicSize > fittedSize)
             targetCamera.orthographicSize = fittedSize;
+    }
+
+    private void HandleMouseWheelZoom()
+    {
+        if (targetCamera == null || !targetCamera.orthographic) return;
+        Mouse mouse = Mouse.current;
+        if (mouse == null) return;
+
+        float scroll = mouse.scroll.ReadValue().y;
+        if (Mathf.Abs(scroll) < .01f) return;
+        if (ignorePointerOverUI && EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            return;
+
+        Vector2 pointer = mouse.position.ReadValue();
+        float planeDistance = Mathf.Abs(cameraZ);
+        Vector3 worldBefore = targetCamera.ScreenToWorldPoint(
+            new Vector3(pointer.x, pointer.y, planeDistance));
+
+        float wheelSteps = scroll / 120f;
+        if (Mathf.Abs(wheelSteps) < .05f) wheelSteps = Mathf.Sign(scroll) * .05f;
+        targetCamera.orthographicSize = Mathf.Clamp(
+            targetCamera.orthographicSize - wheelSteps * zoomStep,
+            Mathf.Min(minimumOrthographicSize, maximumOrthographicSize),
+            maximumOrthographicSize);
+
+        Vector3 worldAfter = targetCamera.ScreenToWorldPoint(
+            new Vector3(pointer.x, pointer.y, planeDistance));
+        Vector3 position = transform.position + (worldBefore - worldAfter);
+        position.z = cameraZ;
+        transform.position = position;
+        ClampToBackground();
     }
 
     private bool TryReadPointer(out Vector2 position, out bool pressedThisFrame, out bool isPressed, out bool releasedThisFrame)
