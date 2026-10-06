@@ -4,11 +4,11 @@ using UnityEngine.UI;
 public class Mole : MonoBehaviour
 {
     [Header("Sprites")]
-    public Sprite s1; // ¬}
-    public Sprite s2; // ¤@¯ë¦a¹«
-    public Sprite s3; // ¤@¯ë¦a¹«³Q¥´
-    public Sprite bombSprite; // ¬µ¼u¦a¹«
-    public Sprite explosionSprite; // Ãz¬µ¹Ï¤ù
+    public Sprite s1; // ï¿½}
+    public Sprite s2; // ï¿½@ï¿½ï¿½aï¿½ï¿½
+    public Sprite s3; // ï¿½@ï¿½ï¿½aï¿½ï¿½ï¿½Qï¿½ï¿½
+    public Sprite bombSprite; // ï¿½ï¿½ï¿½uï¿½aï¿½ï¿½
+    public Sprite explosionSprite; // ï¿½zï¿½ï¿½ï¿½Ï¤ï¿½
 
     [Header("Settings")]
     public Transform hp;
@@ -39,6 +39,7 @@ public class Mole : MonoBehaviour
 
     void Update()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (isUp && !isHit)
         {
             timer -= Time.deltaTime;
@@ -93,6 +94,7 @@ public class Mole : MonoBehaviour
 
     public void OnHit()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (isHit) return;
 
         isHit = true;
@@ -108,6 +110,7 @@ public class Mole : MonoBehaviour
 
     public void Check(Vector2 p, bool g)
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (!isUp || isHit || !g) return;
 
         Vector2 target = hp != null

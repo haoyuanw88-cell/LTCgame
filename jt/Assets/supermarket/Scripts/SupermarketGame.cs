@@ -17,8 +17,12 @@ public class ShoppingRequirement
     [NonSerialized] public int remaining;
 }
 
-public class SupermarketGame : MonoBehaviour
+public class SupermarketGame : MonoBehaviour, ICognitiveGamePauseTarget
 {
+    public bool IsAssessmentRunning => !cleared;
+    public void RestartCurrentItemAfterPause() { }
+    public void CancelCurrentAssessment() { cleared = true; gameStarted = false; StopAllCoroutines(); CognitiveAssessmentService.CancelGame(assessmentSessionId); assessmentSessionId = null; }
+
     [Header("購物清單（可隨時修改）")]
     public List<ShoppingRequirement> requiredProducts = new List<ShoppingRequirement>();
 
@@ -90,24 +94,28 @@ public class SupermarketGame : MonoBehaviour
 
     private void Update()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (gameStarted && !cleared && Time.time >= nextPanelHideTime)
             targetPanelYOffset = panelHiddenYOffset;
     }
 
     private void OnMouseDown()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (gameStarted && !cleared)
             ShowShoppingPanel();
     }
 
     public void ShowShoppingPanel()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         targetPanelYOffset = 0f;
         nextPanelHideTime = Time.time + panelHideDelay;
     }
 
     public void StartGame()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (gameStarted)
             return;
 
@@ -206,6 +214,7 @@ public class SupermarketGame : MonoBehaviour
 
     public void MoveCamera(bool goToProductArea)
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (!gameStarted || gameCamera == null || cleared)
             return;
 
@@ -216,6 +225,7 @@ public class SupermarketGame : MonoBehaviour
 
     public void Buy(SpriteRenderer product)
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (!gameStarted || cleared || product == null)
             return;
 
@@ -534,6 +544,7 @@ public class ProductClick : MonoBehaviour
 
     private void OnMouseDown()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (game == null || !game.IsGameStarted || game.IsCleared)
             return;
 
@@ -565,6 +576,7 @@ public class TutorialStartClick : MonoBehaviour
 
     private void OnMouseDown()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (game != null)
             game.StartGame();
     }
@@ -583,6 +595,7 @@ public class CameraArrow : MonoBehaviour
 
     private void OnMouseDown()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (game != null)
             game.MoveCamera(goToProductArea);
     }

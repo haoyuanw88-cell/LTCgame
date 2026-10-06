@@ -5,8 +5,12 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using Mediapipe.Unity.Sample.HandLandmarkDetection;
 
-public class MoleManager : MonoBehaviour
+public class MoleManager : MonoBehaviour, ICognitiveGamePauseTarget
 {
+    public bool IsAssessmentRunning => !gameEnded;
+    public void RestartCurrentItemAfterPause() { }
+    public void CancelCurrentAssessment() { gameRunning = false; gameEnded = true; HideAllMoles(); StopAllCoroutines(); CognitiveAssessmentService.CancelGame(assessmentSessionId); assessmentSessionId = null; }
+
     [Header("MediaPipe")]
     public HandLandmarkerRunner handDataSource;
 
@@ -79,7 +83,7 @@ public class MoleManager : MonoBehaviour
         if (countdownText != null)
         {
             countdownText.gameObject.SetActive(true);
-            countdownText.transform.localScale = Vector3.one * 0.9f;
+            countdownText.transform.localScale = Vector3.one;
             countdownText.text = "準備中";
         }
 
@@ -89,6 +93,7 @@ public class MoleManager : MonoBehaviour
 
     void Update()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (!gameRunning || gameEnded) return;
 
         timer += Time.deltaTime;
@@ -101,7 +106,7 @@ public class MoleManager : MonoBehaviour
 
         if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
         {
-            UpdateFromMediaPipe(Mouse.current.position.ReadValue(), true);
+            UpdateFromMediaPipe(Mouse.current.position.ReadValue(), true, true);
         }
     }
 
@@ -109,14 +114,16 @@ public class MoleManager : MonoBehaviour
     {
         gameRunning = false;
 
-        while (handDataSource != null && !handDataSource.HasLatestResult)
+        float cameraWait = 0f;
+        while (CognitiveGamePauseMenu.IsGamePaused || (handDataSource != null && !handDataSource.HasLatestResult && cameraWait < 8f))
         {
             if (countdownText != null)
             {
                 countdownText.text = "準備中";
-                countdownText.transform.localScale = Vector3.one * 0.9f;
+                countdownText.transform.localScale = Vector3.one;
             }
 
+            cameraWait += Time.deltaTime;
             yield return null;
         }
 
@@ -128,7 +135,7 @@ public class MoleManager : MonoBehaviour
         if (countdownText != null)
         {
             countdownText.gameObject.SetActive(true);
-            countdownText.transform.localScale = Vector3.one * 2.5f;
+            countdownText.transform.localScale = Vector3.one;
 
             countdownText.text = "3";
             yield return new WaitForSeconds(1f);
@@ -181,10 +188,20 @@ public class MoleManager : MonoBehaviour
         }
     }
 
-    public void UpdateFromMediaPipe(Vector2 screenPos, bool isGrabbing)
+    public void UpdateFromMediaPipe(Vector2 screenPos, bool isGrabbing, bool fromMouse = false)
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (!gameRunning || gameEnded) return;
         if (!isGrabbing) return;
+        if (fromMouse && UnityEngine.EventSystems.EventSystem.current != null)
+        {
+            var events = UnityEngine.EventSystems.EventSystem.current;
+            var pointer = new UnityEngine.EventSystems.PointerEventData(events) { position = screenPos };
+            var hits = new System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+            events.RaycastAll(pointer, hits);
+            foreach (var hitUI in hits)
+                if (hitUI.gameObject.GetComponentInParent<UnityEngine.UI.Selectable>() != null) return;
+        }
 
         if (Time.time - lastMediaPipeHitTime < mediaPipeHitCooldown)
         {
@@ -243,6 +260,7 @@ public class MoleManager : MonoBehaviour
 
     public void OnMoleMissed(Mole mole)
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (!gameRunning || gameEnded) return;
         if (mole == null) return;
 

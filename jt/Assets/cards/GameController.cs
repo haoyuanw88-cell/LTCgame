@@ -11,8 +11,12 @@ using UnityEngine.UI;
 using UnityEngine.InputSystem;
 #endif
 
-public class GameController : MonoBehaviour
+public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
 {
+    public bool IsAssessmentRunning => !battleEnded;
+    public void RestartCurrentItemAfterPause() { }
+    public void CancelCurrentAssessment() { battleEnded = true; isProcessing = true; StopAllCoroutines(); CognitiveAssessmentService.CancelGame(assessmentSessionId); assessmentSessionId = null; }
+
     // --- 動畫與音效 ---
     [Header("Animations")]
     public Animator playerAnimator; 
@@ -209,7 +213,7 @@ public class GameController : MonoBehaviour
 
     // --- 遊戲邏輯區 ---
 
-    public bool CanClickCards() => !isProcessing && !battleEnded && !tutorialShowing;
+    public bool CanClickCards() => !CognitiveGamePauseMenu.IsGamePaused && !isProcessing && !battleEnded && !tutorialShowing;
 
     private IEnumerator StartNewRound()
     {
@@ -265,6 +269,7 @@ public class GameController : MonoBehaviour
 
     public void CardClicked(Card card)
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (!CanClickCards() || revealedCards.Contains(card)) return;
         if (revealedCards.Count == 0)
             pairStartTime = Time.time;
@@ -675,18 +680,21 @@ public class GameController : MonoBehaviour
 
     private void ShowNextTeachingPage()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         teachingPageIndex = Mathf.Min(teachingPageIndex + 1, 1);
         UpdateTeachingPage();
     }
 
     private void ShowPreviousTeachingPage()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         teachingPageIndex = Mathf.Max(teachingPageIndex - 1, 0);
         UpdateTeachingPage();
     }
 
     private void CloseTeachingUI()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (teachingStage != null)
         {
             teachingStage.SetActive(false);

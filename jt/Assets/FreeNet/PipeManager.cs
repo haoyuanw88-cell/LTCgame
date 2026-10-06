@@ -7,8 +7,12 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro; // ⭐ 新增：使用 TextMesh Pro 必備
 
-public class PipeManager : MonoBehaviour
+public class PipeManager : MonoBehaviour, ICognitiveGamePauseTarget
 {
+    public bool IsAssessmentRunning => !isGameOver;
+    public void RestartCurrentItemAfterPause() { }
+    public void CancelCurrentAssessment() { isGameOver = true; StopAllCoroutines(); CognitiveAssessmentService.CancelGame(assessmentSessionId); assessmentSessionId = null; }
+
     public int width = 12;  
     public int height = 12; 
     [NonSerialized]
@@ -240,6 +244,7 @@ public class PipeManager : MonoBehaviour
 
     void Update()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         HandleTutorialInput();
 
         // 如果遊戲還沒結束，就持續累加時間
@@ -253,6 +258,7 @@ public class PipeManager : MonoBehaviour
     // ⭐ 新增：提供給 Blockin 呼叫的方法
     public void AddMoveCount()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (isGameOver) return;
         moveCount++;
         RecordPipeMove();
@@ -320,6 +326,7 @@ public class PipeManager : MonoBehaviour
 
     public void CheckConnections()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (isGameOver) return;
 
         foreach (var p in allPipes)
@@ -576,6 +583,7 @@ public class PipeManager : MonoBehaviour
 
     public void ShowPreviousTutorialPage()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (!tutorialActive)
         {
             return;
@@ -586,6 +594,7 @@ public class PipeManager : MonoBehaviour
 
     public void ShowNextTutorialPage()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (!tutorialActive)
         {
             return;
@@ -596,6 +605,7 @@ public class PipeManager : MonoBehaviour
 
     public void CloseTutorial()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) return;
         tutorialActive = false;
         SetTutorialElementActive(tutorialFirstPage, false);
         SetTutorialElementActive(tutorialSecondPage, false);

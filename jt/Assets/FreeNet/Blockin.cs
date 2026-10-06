@@ -69,7 +69,7 @@ public class Blockin : MonoBehaviour
 
     private void OnMouseDown()
     {
-        if (!Application.isPlaying)
+        if (CognitiveGamePauseMenu.IsGamePaused || !Application.isPlaying)
         {
             return;
         }

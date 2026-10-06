@@ -25,6 +25,11 @@ public sealed class CognitiveGamePauseMenu : MonoBehaviour
     public TMP_Text messageText;
     public string gameHomeScene = "GameScene";
 
+    public bool resumeKeepsProgress;
+    public static bool IsGamePaused { get; private set; }
+    float previousTimeScale = 1f;
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetPauseState() { IsGamePaused = false; }
     private ICognitiveGamePauseTarget pauseTarget;
     private bool isPaused;
 
@@ -37,7 +42,7 @@ public sealed class CognitiveGamePauseMenu : MonoBehaviour
         if (homeButton != null) homeButton.onClick.AddListener(ReturnHomeWithoutSaving);
         if (messageText != null)
         {
-            messageText.text =
+            messageText.text = resumeKeepsProgress ? "返回遊戲時，會保留目前進度，\n從暫停的位置繼續遊戲。\n回到主頁則不儲存本次紀錄。" :
                 "返回遊戲時，會捨棄目前這一題，\n" +
                 "恢復到上一題完成時的剩餘時間，\n" +
                 "並重新產生相同難度的新題目。";
@@ -64,7 +69,9 @@ public sealed class CognitiveGamePauseMenu : MonoBehaviour
         if (pauseTarget == null) ResolveTarget();
         if (pauseTarget == null || !pauseTarget.IsAssessmentRunning) return;
 
+        previousTimeScale = Time.timeScale;
         isPaused = true;
+        IsGamePaused = true;
         if (pausePanel != null)
         {
             pausePanel.SetActive(true);
@@ -78,7 +85,8 @@ public sealed class CognitiveGamePauseMenu : MonoBehaviour
     {
         if (!isPaused) return;
 
-        Time.timeScale = 1f;
+        Time.timeScale = previousTimeScale;
+        IsGamePaused = false;
         pauseTarget?.RestartCurrentItemAfterPause();
         if (pausePanel != null) pausePanel.SetActive(false);
         isPaused = false;
@@ -87,13 +95,18 @@ public sealed class CognitiveGamePauseMenu : MonoBehaviour
     public void ReturnHomeWithoutSaving()
     {
         Time.timeScale = 1f;
+        IsGamePaused = false;
         pauseTarget?.CancelCurrentAssessment();
         isPaused = false;
         SceneManager.LoadScene(gameHomeScene);
     }
 
-    private void OnDestroy()
+    private void OnDisable()
     {
-        if (isPaused) Time.timeScale = 1f;
+        if (!isPaused) return;
+        Time.timeScale = previousTimeScale;
+        IsGamePaused = false;
+        isPaused = false;
+        if (pausePanel != null) pausePanel.SetActive(false);
     }
 }

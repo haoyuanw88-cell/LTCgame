@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 namespace LTC.Audio
 {
-    /// <summary>One persistent audio service; clips are imported assets, never generated at runtime.</summary>
+    /// <summary>One persistent audio service using existing music assets and PCM import backups.</summary>
     public sealed class LTCGameAudio : MonoBehaviour
     {
         public static LTCGameAudio Instance { get; private set; }
@@ -39,7 +39,7 @@ namespace LTC.Audio
             music.loop = true;
             music.spatialBlend = 0;
             music.volume = 0;
-            music.clip = Resources.Load<AudioClip>("LTCAudio/GardenLoop");
+            music.clip = LTCPcmMusic.Load("GardenLoop");
             effects = gameObject.AddComponent<AudioSource>();
             effects.playOnAwake = false;
             effects.spatialBlend = 0;
@@ -53,7 +53,12 @@ namespace LTC.Audio
         void ConfigureScene()
         {
             string path = SceneManager.GetActiveScene().path;
-            supported = path.StartsWith("Assets/new LTC/");
+            string name = SceneManager.GetActiveScene().name;
+            supported = path.StartsWith("Assets/new LTC/") || name == "PipeGame" || name == "CardsGame" || name == "SupermarketGame" || name == "TextPuzzleGame";
+            string track = name == "PipeGame" ? "PipeMusic" : name == "CardsGame" ? "CardsMusic" : name == "SupermarketGame" ? "SupermarketMusic" : name == "TextPuzzleGame" ? "TextPuzzleMusic" : "GardenLoop";
+            var clip = LTCPcmMusic.Load(track);
+            if (music.clip != clip) { music.Stop(); music.clip = clip; }
+            otherMusicPlaying = false;
             nextScan = 0;
             if (supported && music.clip && !music.isPlaying) music.Play();
         }

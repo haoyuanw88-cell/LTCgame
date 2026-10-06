@@ -109,7 +109,7 @@ public sealed class LTCGardenShopController : MonoBehaviour
         if (font == null) font = sample == null ? null : sample.font;
 
         foreach (Canvas canvas in FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            canvas.gameObject.SetActive(false);
+            if (canvas.gameObject.scene == gameObject.scene) canvas.gameObject.SetActive(false);
 
         EnsureEventSystem();
         BuildInterface();

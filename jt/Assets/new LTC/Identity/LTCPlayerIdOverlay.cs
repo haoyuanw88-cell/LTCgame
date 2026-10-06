@@ -74,17 +74,17 @@ namespace LTC.Identity
             textObject.transform.SetParent(canvasObject.transform, false);
 
             RectTransform rect = textObject.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(1f, 0f);
-            rect.anchorMax = new Vector2(1f, 0f);
-            rect.pivot = new Vector2(1f, 0f);
-            rect.anchoredPosition = new Vector2(-14f, 10f);
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.anchoredPosition = new Vector2(-14f, -10f);
             rect.sizeDelta = new Vector2(520f, 32f);
 
             idText = textObject.AddComponent<Text>();
             idText.font = CreateChineseFont();
             idText.fontSize = 18;
             idText.fontStyle = FontStyle.Bold;
-            idText.alignment = TextAnchor.LowerRight;
+            idText.alignment = TextAnchor.UpperRight;
             idText.color = new Color(0f, 0f, 0f, 0.82f);
             idText.raycastTarget = false;
             idText.resizeTextForBestFit = true;
@@ -99,7 +99,7 @@ namespace LTC.Identity
         void LateUpdate()
         {
             // GameScene displays the authenticated ID in the profile card.
-            if (idText != null) idText.enabled = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "GameScene";
+            if (idText != null) idText.enabled = true;
         }
 
         void RefreshText()

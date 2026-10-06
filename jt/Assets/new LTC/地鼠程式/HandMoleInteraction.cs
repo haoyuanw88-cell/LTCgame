@@ -30,6 +30,7 @@ public class HandMoleInteraction : MonoBehaviour
 
     void Update()
     {
+        if (CognitiveGamePauseMenu.IsGamePaused) { ResetMissingHands(0); return; }
         if (handDataSource == null || moleManager == null) return;
         if (!handDataSource.HasLatestResult) return;
 
