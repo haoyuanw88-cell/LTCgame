@@ -54,8 +54,12 @@ public sealed class LTCPetGardenCollectionController : MonoBehaviour
             GameObject pet = new GameObject("盲盒寵物_" + definition.displayName);
             pet.transform.SetParent(transform, false);
             pet.transform.position = InitialPosition(i, owned.Count);
-            var walker = pet.AddComponent<LTCPetSpriteWalker>();
-            walker.Initialize(definition, i);
+            var artwork = new GameObject("Artwork", typeof(SpriteRenderer));
+            artwork.transform.SetParent(pet.transform, false);
+            var frames = LTCPetCollectionService.GetFrames(definition);
+            artwork.GetComponent<SpriteRenderer>().sprite = frames.Length > 0 ? frames[0] : null;
+            var walker = pet.AddComponent<PetWander>();
+            walker.ConfigureCollectionPet(definition, frames);
             spawnedPets[definition.id] = pet;
         }
     }
@@ -69,97 +73,3 @@ public sealed class LTCPetGardenCollectionController : MonoBehaviour
     }
 }
 
-[RequireComponent(typeof(SpriteRenderer))]
-sealed class LTCPetSpriteWalker : MonoBehaviour
-{
-    SpriteRenderer rendererComponent;
-    Sprite[] frames;
-    int frameIndex;
-    float nextFrameAt;
-    Vector3 destination;
-    float pauseUntil;
-    float speed;
-    bool walking;
-    bool sourceFacesRight;
-
-    public void Initialize(LTCPetDefinition definition, int stableIndex)
-    {
-        rendererComponent = GetComponent<SpriteRenderer>();
-        frames = LTCPetCollectionService.GetFrames(definition);
-        rendererComponent.sprite = frames.Length == 0 ? null : frames[0];
-        rendererComponent.sortingOrder = 5000 + stableIndex;
-        sourceFacesRight = definition.id != "cat";
-        speed = Random.Range(0.55f, 0.85f);
-        FitHeight(1.55f);
-        StartPause();
-    }
-
-    void Update()
-    {
-        if (PetCollectionBook.ModalOpen || frames == null || frames.Length == 0) return;
-        UpdateDepth();
-        if (!walking)
-        {
-            if (Time.time >= pauseUntil) ChooseDestination();
-            return;
-        }
-
-        Vector3 before = transform.position;
-        transform.position = Vector3.MoveTowards(before, destination, speed * Time.deltaTime);
-        float dx = destination.x - before.x;
-        if (Mathf.Abs(dx) > 0.001f)
-            rendererComponent.flipX = sourceFacesRight ? dx < 0f : dx > 0f;
-        Animate();
-
-        if ((transform.position - destination).sqrMagnitude < 0.003f)
-            StartPause();
-    }
-
-    void ChooseDestination()
-    {
-        destination = new Vector3(Random.Range(-4.2f, 4.2f), Random.Range(-2.1f, 1.0f), 0f);
-        walking = true;
-        nextFrameAt = Time.time;
-    }
-
-    void StartPause()
-    {
-        walking = false;
-        frameIndex = 0;
-        if (frames != null && frames.Length > 0) rendererComponent.sprite = frames[0];
-        pauseUntil = Time.time + Random.Range(3f, 5f);
-    }
-
-    void Animate()
-    {
-        if (Time.time < nextFrameAt) return;
-        frameIndex = (frameIndex + 1) % frames.Length;
-        rendererComponent.sprite = frames[frameIndex];
-        nextFrameAt = Time.time + 0.11f;
-    }
-
-    void FitHeight(float targetHeight)
-    {
-        if (rendererComponent.sprite == null || rendererComponent.sprite.bounds.size.y <= 0.001f) return;
-        Sprite sprite = rendererComponent.sprite;
-        // Transparent animation padding must not make newly collected pets tiny.
-        Color32[] pixels = sprite.texture.GetPixels32();
-        int minY = sprite.texture.height;
-        int maxY = -1;
-        for (int y = 0; y < sprite.texture.height; y++)
-            for (int x = 0; x < sprite.texture.width; x++)
-                if (pixels[y * sprite.texture.width + x].a > 20)
-                {
-                    minY = Mathf.Min(minY, y);
-                    maxY = Mathf.Max(maxY, y);
-                }
-        float visibleHeight = maxY >= minY ? (maxY - minY + 1) / sprite.pixelsPerUnit : sprite.bounds.size.y;
-        float scale = targetHeight / visibleHeight;
-        transform.localScale = new Vector3(scale, scale, 1f);
-    }
-
-    void UpdateDepth()
-    {
-        rendererComponent.sortingOrder = 5000 + Mathf.RoundToInt(-transform.position.y * 100f);
-    }
-}

@@ -8,6 +8,15 @@ using UnityEngine;
 public sealed class PetWander : MonoBehaviour
 {
     public bool IsWalking => isWalking;
+    public string PetId => !string.IsNullOrEmpty(collectionId) ? collectionId : name.Contains("貓") ? "cat" : name.Contains("兔") ? "rabbit" : name;
+    public string DisplayName => !string.IsNullOrEmpty(collectionName) ? collectionName : PetId == "cat" ? "貓咪" : PetId == "rabbit" ? "兔子" : name;
+    public Sprite Portrait => spriteRenderer == null ? null : spriteRenderer.sprite;
+    public bool IsCollectionPet => !string.IsNullOrEmpty(collectionId);
+    string collectionId, collectionName;
+    Sprite[] collectionFrames;
+    Bounds collectionVisibleBounds;
+    int collectionFrame;
+    float nextCollectionFrame;
     private static readonly int WalkingHash = Animator.StringToHash("Walking");
     private static readonly List<PetWander> ActivePets = new List<PetWander>();
     private const int PetForegroundBaseOrder = 5000;
@@ -58,7 +67,7 @@ public sealed class PetWander : MonoBehaviour
         if (rootAnimator != null && rootAnimator != animator)
             rootAnimator.enabled = false;
 
-        if (spriteRenderer == null || animator == null)
+        if (spriteRenderer == null)
         {
             Debug.LogError("Pet visual hierarchy is incomplete. A child SpriteRenderer and Animator are required.", this);
             enabled = false;
@@ -67,8 +76,8 @@ public sealed class PetWander : MonoBehaviour
 
         spriteRenderer.sortingOrder = sortingOrder;
         spriteRenderer.enabled = true;
-        animator.enabled = true;
-        foreach (AnimatorControllerParameter parameter in animator.parameters)
+        if (animator != null) animator.enabled = true;
+        foreach (AnimatorControllerParameter parameter in animator != null ? animator.parameters : new AnimatorControllerParameter[0])
         {
             if (parameter.nameHash == WalkingHash && parameter.type == AnimatorControllerParameterType.Bool)
             {
@@ -76,7 +85,33 @@ public sealed class PetWander : MonoBehaviour
                 break;
             }
         }
-        FitVisualToTargetHeight();
+        if (animator != null) FitVisualToTargetHeight();
+    }
+
+    public void ConfigureCollectionPet(LTCPetDefinition definition, Sprite[] frames)
+    {
+        collectionId = definition.id;
+        collectionName = definition.displayName;
+        collectionFrames = frames;
+        sourceFacesRight = definition.id != "cat";
+        if (frames != null && frames.Length > 0)
+        {
+            spriteRenderer.sprite = frames[0];
+            Color32[] pixels = frames[0].texture.GetPixels32();
+            int min = frames[0].texture.height, max = -1, minX = frames[0].texture.width, maxX = -1;
+            for (int y = 0; y < frames[0].texture.height; y++)
+                for (int x = 0; x < frames[0].texture.width; x++)
+                    if (pixels[y * frames[0].texture.width + x].a > 20) { min = Mathf.Min(min, y); max = Mathf.Max(max, y); minX = Mathf.Min(minX, x); maxX = Mathf.Max(maxX, x); }
+            float visibleHeight = max >= min ? (max - min + 1) / frames[0].pixelsPerUnit : frames[0].bounds.size.y;
+            float scale = targetHeight / visibleHeight;
+            spriteRenderer.transform.localScale = new Vector3(scale, scale, 1f);
+            float ppu = frames[0].pixelsPerUnit;
+            collectionVisibleBounds = new Bounds(new Vector3((minX + maxX + 1f) * .5f / ppu - frames[0].bounds.extents.x,
+                (min + max + 1f) * .5f / ppu - frames[0].bounds.extents.y, 0f),
+                new Vector3((maxX - minX + 1f) / ppu, visibleHeight, .01f));
+        }
+        PetHungerService.RemainingSeconds(PetId);
+        StartPause(false);
     }
 
     private void OnEnable()
@@ -105,8 +140,20 @@ public sealed class PetWander : MonoBehaviour
         }
 
         Vector3 beforeMove = transform.position;
-        transform.position = Vector3.MoveTowards(beforeMove, destination, walkSpeed * Time.deltaTime);
+        Vector3 nextPosition = Vector3.MoveTowards(beforeMove, destination, walkSpeed * Time.deltaTime);
+        if (!CanMoveTo(nextPosition))
+        {
+            StartPause(true);
+            return;
+        }
+        transform.position = nextPosition;
         UpdateFacing(destination.x - beforeMove.x);
+        if (collectionFrames != null && collectionFrames.Length > 0 && Time.time >= nextCollectionFrame)
+        {
+            collectionFrame = (collectionFrame + 1) % collectionFrames.Length;
+            spriteRenderer.sprite = collectionFrames[collectionFrame];
+            nextCollectionFrame = Time.time + .11f;
+        }
 
         if (Vector3.SqrMagnitude(transform.position - destination) <= 0.0025f)
             StartPause(true);
@@ -130,7 +177,7 @@ public sealed class PetWander : MonoBehaviour
         isWalking = true;
         if (usesWalkingParameter)
             animator.SetBool(WalkingHash, true);
-        else
+        else if (animator != null)
             animator.speed = 1f;
     }
 
@@ -141,10 +188,16 @@ public sealed class PetWander : MonoBehaviour
         {
             animator.SetBool(WalkingHash, false);
         }
-        else
+        else if (animator != null)
         {
             animator.Play(0, 0, 0f);
             animator.speed = 0f;
+        }
+        if (collectionFrames != null && collectionFrames.Length > 0)
+        {
+            collectionFrame = 0;
+            spriteRenderer.sprite = collectionFrames[0];
+            nextCollectionFrame = Time.time;
         }
         float low = afterWalking ? minimumPauseAfterWalk : minimumPause;
         float high = afterWalking ? maximumPauseAfterWalk : maximumPause;
@@ -166,6 +219,35 @@ public sealed class PetWander : MonoBehaviour
         return true;
     }
 
+    // Test the actual visible rectangles, not a fixed distance between root pivots.
+    // Includes vertical offsets from transparent padding and differently sized pets.
+    private bool CanMoveTo(Vector3 position)
+    {
+        if (spriteRenderer == null) return true;
+        Bounds mine = VisibleBounds();
+        mine.center += position - transform.position;
+        for (int i = 0; i < ActivePets.Count; i++)
+        {
+            PetWander other = ActivePets[i];
+            if (other == null || other == this || !other.isActiveAndEnabled || other.spriteRenderer == null) continue;
+            Bounds theirs = other.VisibleBounds();
+            Vector2 delta = mine.center - theirs.center;
+            float xGap = (mine.size.x + theirs.size.x) * .5f + .08f;
+            float yGap = (mine.size.y + theirs.size.y) * .5f + .08f;
+            if (Mathf.Abs(delta.x) < xGap && Mathf.Abs(delta.y) < yGap) return false;
+        }
+        return true;
+    }
+
+    private Bounds VisibleBounds()
+    {
+        if (!IsCollectionPet) return spriteRenderer.bounds;
+        Transform visual = spriteRenderer.transform;
+        Vector3 scale = visual.lossyScale;
+        return new Bounds(visual.TransformPoint(collectionVisibleBounds.center),
+            Vector3.Scale(collectionVisibleBounds.size, new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), 1f)));
+    }
+
     private void ResolvePetOverlap()
     {
         Vector2 pushDirection = Vector2.zero;
@@ -175,25 +257,24 @@ public sealed class PetWander : MonoBehaviour
             if (other == null || other == this || !other.isActiveAndEnabled)
                 continue;
 
-            Vector2 delta = (Vector2)(transform.position - other.transform.position);
-            float distance = delta.magnitude;
-            if (distance >= separationRadius)
-                continue;
-
-            Vector2 away;
-            if (distance <= 0.001f)
-                away = ActivePets.IndexOf(this) < i ? Vector2.left : Vector2.right;
-            else
-                away = delta / distance;
-
-            pushDirection += away * (separationRadius - distance);
+            if (spriteRenderer == null || other.spriteRenderer == null) continue;
+            Bounds mine = VisibleBounds();
+            Bounds theirs = other.VisibleBounds();
+            Vector2 delta = mine.center - theirs.center;
+            float overlapX = (mine.size.x + theirs.size.x) * .5f + .08f - Mathf.Abs(delta.x);
+            float overlapY = (mine.size.y + theirs.size.y) * .5f + .08f - Mathf.Abs(delta.y);
+            if (overlapX <= 0f || overlapY <= 0f) continue;
+            float signX = Mathf.Abs(delta.x) > .001f ? Mathf.Sign(delta.x) : ActivePets.IndexOf(this) < i ? -1f : 1f;
+            float signY = Mathf.Abs(delta.y) > .001f ? Mathf.Sign(delta.y) : ActivePets.IndexOf(this) < i ? -1f : 1f;
+            // Separate along the shortest axis without changing Z or scale.
+            pushDirection += overlapX < overlapY ? new Vector2(signX * overlapX, 0f) : new Vector2(0f, signY * overlapY);
         }
 
         if (pushDirection.sqrMagnitude <= 0.000001f)
             return;
 
         Vector3 position = transform.position;
-        Vector2 push = Vector2.ClampMagnitude(pushDirection * separationSpeed, separationSpeed) * Time.deltaTime;
+        Vector2 push = pushDirection;
         position.x = Mathf.Clamp(position.x + push.x, walkMin.x, walkMax.x);
         position.y = Mathf.Clamp(position.y + push.y, walkMin.y, walkMax.y);
         transform.position = position;
@@ -202,9 +283,7 @@ public sealed class PetWander : MonoBehaviour
         // back into the same collision and appears to vibrate.
         if (isWalking)
         {
-            Vector2 routeCorrection = pushDirection.normalized * separationRadius * 0.35f;
-            destination.x = Mathf.Clamp(destination.x + routeCorrection.x, walkMin.x, walkMax.x);
-            destination.y = Mathf.Clamp(destination.y + routeCorrection.y, walkMin.y, walkMax.y);
+            StartPause(true);
         }
     }
 

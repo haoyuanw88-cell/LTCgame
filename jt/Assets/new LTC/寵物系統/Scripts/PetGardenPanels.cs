@@ -192,7 +192,7 @@ public sealed class PetGardenPanels : MonoBehaviour
 
     static string PetId(PetWander pet)
     {
-        return pet.name.Contains("貓") ? "cat" : pet.name.Contains("兔") ? "rabbit" : pet.name;
+        return pet.PetId;
     }
 
     void BuildStatusList()
@@ -257,7 +257,7 @@ public sealed class PetGardenPanels : MonoBehaviour
         portrait.gameObject.AddComponent<RectMask2D>();
         AddPetPortrait(portrait.transform, pet, id);
 
-        var name = CreateText(background.transform, "名稱", id == "cat" ? "貓咪" : id == "rabbit" ? "兔子" : pet.name, 38, TextAlignmentOptions.Center);
+        var name = CreateText(background.transform, "名稱", pet.DisplayName, 38, TextAlignmentOptions.Center);
         Place(name.rectTransform, .23f, .46f, .45f, .91f);
         var activity = CreateText(background.transform, "活動", "", 27, TextAlignmentOptions.Center);
         Place(activity.rectTransform, .23f, .08f, .45f, .45f);
@@ -276,6 +276,14 @@ public sealed class PetGardenPanels : MonoBehaviour
 
     void AddPetPortrait(Transform parent, PetWander pet, string id)
     {
+        if (pet.IsCollectionPet)
+        {
+            var picture = CreateImage(parent, "寵物頭像", pet.Portrait, Color.white);
+            Place(picture.rectTransform, 0, 0, 1, 1);
+            picture.preserveAspect = true;
+            picture.raycastTarget = false;
+            return;
+        }
         var renderer = pet.transform.Find("Visual/Artwork")?.GetComponent<SpriteRenderer>();
         if (renderer == null) renderer = pet.GetComponentInChildren<SpriteRenderer>();
         if (renderer == null || renderer.sprite == null) return;
@@ -353,6 +361,7 @@ public sealed class PetGardenPanels : MonoBehaviour
         foreach (var pet in FindObjectsByType<PetWander>(FindObjectsSortMode.None))
         {
             var renderer = pet.transform.Find("Visual/Artwork")?.GetComponent<SpriteRenderer>();
+            if (renderer == null) renderer = pet.GetComponentInChildren<SpriteRenderer>();
             if (renderer == null || !renderer.enabled) continue;
             Vector3 world = camera.ScreenToWorldPoint(new Vector3(position.x, position.y,
                 Mathf.Abs(camera.transform.position.z - renderer.transform.position.z)));
@@ -368,7 +377,7 @@ public sealed class PetGardenPanels : MonoBehaviour
         statusViews.Clear();
         ClearRows();
         string id = PetId(pet);
-        string name = id == "cat" ? "貓咪" : id == "rabbit" ? "兔子" : pet.name;
+        string name = pet.DisplayName;
         Show("餵食" + name, "一份背包點心可以補回一塊肉");
         var question = CreateText(rows, "餵食詢問", "要餵食「" + name + "」嗎？", 50, TextAlignmentOptions.Center);
         Place(question.rectTransform, .05f, .53f, .95f, .82f);

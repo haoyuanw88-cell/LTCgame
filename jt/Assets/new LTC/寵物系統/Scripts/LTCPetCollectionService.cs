@@ -104,6 +104,7 @@ public static class LTCPetCollectionService
             CoinData.AddCoins(-DrawCost);
 
         PlayerPrefs.SetInt(OwnedPrefix + pet.id, 1);
+        PetHungerService.RemainingSeconds(pet.id);
         PlayerPrefs.Save();
         Changed?.Invoke();
         return new LTCPetDrawResult
@@ -251,8 +252,8 @@ public static class LTCPetCollectionService
 
         const int padding = 7;
         // Equal canvases and a common foot baseline prevent per-frame crop jitter.
-        int outputWidth = Mathf.Max(128, maxX - minX + 1 + padding * 2);
-        int outputHeight = Mathf.Max(128, maxY - minY + 1 + padding * 2);
+        int outputWidth = Mathf.Max(Mathf.CeilToInt(128f * source.width / 1536f), maxX - minX + 1 + padding * 2);
+        int outputHeight = Mathf.Max(Mathf.CeilToInt(128f * source.height / 1024f), maxY - minY + 1 + padding * 2);
         int leftPadding = (outputWidth - (maxX - minX + 1)) / 2;
         var isolated = new Texture2D(outputWidth, outputHeight, TextureFormat.RGBA32, false);
         var isolatedPixels = new Color32[outputWidth * outputHeight];
@@ -292,9 +293,18 @@ public static class LTCPetCollectionService
         {
             for (int column = 0; column < 4; column++)
             {
-                frames[index++] = Sprite.Create(texture,
-                    new Rect(column * cellWidth, row * cellHeight, cellWidth, cellHeight),
-                    new Vector2(0.5f, 0.5f), 100f);
+                // Give every frame the same safe canvas, including space for the lid,
+                // ribbons and sparkles. FullRect avoids a changing tight mesh.
+                const int margin = 24;
+                var padded = new Texture2D(cellWidth + margin * 2, cellHeight + margin * 2, TextureFormat.RGBA32, false);
+                padded.SetPixels32(new Color32[padded.width * padded.height]);
+                padded.SetPixels(margin, margin, cellWidth, cellHeight,
+                    texture.GetPixels(column * cellWidth, row * cellHeight, cellWidth, cellHeight));
+                padded.Apply(false, false);
+                padded.filterMode = FilterMode.Bilinear;
+                padded.wrapMode = TextureWrapMode.Clamp;
+                frames[index++] = Sprite.Create(padded, new Rect(0, 0, padded.width, padded.height),
+                    new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
             }
         }
         FrameCache[cacheKey] = frames;
