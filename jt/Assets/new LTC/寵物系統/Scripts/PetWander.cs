@@ -7,6 +7,7 @@ using UnityEngine;
 /// </summary>
 public sealed class PetWander : MonoBehaviour
 {
+    public bool IsWalking => isWalking;
     private static readonly int WalkingHash = Animator.StringToHash("Walking");
     private static readonly List<PetWander> ActivePets = new List<PetWander>();
     private const int PetForegroundBaseOrder = 5000;
@@ -17,6 +18,8 @@ public sealed class PetWander : MonoBehaviour
     [SerializeField, Min(0.05f)] private float walkSpeed = 0.75f;
     [SerializeField, Min(0f)] private float minimumPause = 0.8f;
     [SerializeField, Min(0f)] private float maximumPause = 2.3f;
+    [SerializeField, Min(0f)] private float minimumPauseAfterWalk = 3f;
+    [SerializeField, Min(0f)] private float maximumPauseAfterWalk = 5f;
 
     [Header("Avoid other pets")]
     [SerializeField, Min(0.1f)] private float separationRadius = 1.15f;
@@ -80,7 +83,7 @@ public sealed class PetWander : MonoBehaviour
     {
         if (!ActivePets.Contains(this))
             ActivePets.Add(this);
-        StartPause();
+        StartPause(false);
     }
 
     private void OnDisable()
@@ -90,6 +93,7 @@ public sealed class PetWander : MonoBehaviour
 
     private void Update()
     {
+        if(PetCollectionBook.ModalOpen)return;
         ResolvePetOverlap();
         UpdateDepthSorting();
 
@@ -105,7 +109,7 @@ public sealed class PetWander : MonoBehaviour
         UpdateFacing(destination.x - beforeMove.x);
 
         if (Vector3.SqrMagnitude(transform.position - destination) <= 0.0025f)
-            StartPause();
+            StartPause(true);
     }
 
     private void ChooseDestination()
@@ -130,7 +134,7 @@ public sealed class PetWander : MonoBehaviour
             animator.speed = 1f;
     }
 
-    private void StartPause()
+    private void StartPause(bool afterWalking)
     {
         isWalking = false;
         if (usesWalkingParameter)
@@ -142,7 +146,9 @@ public sealed class PetWander : MonoBehaviour
             animator.Play(0, 0, 0f);
             animator.speed = 0f;
         }
-        resumeWalkingAt = Time.time + Random.Range(minimumPause, maximumPause);
+        float low = afterWalking ? minimumPauseAfterWalk : minimumPause;
+        float high = afterWalking ? maximumPauseAfterWalk : maximumPause;
+        resumeWalkingAt = Time.time + Random.Range(low, Mathf.Max(low, high));
     }
 
     private bool IsClearOfOtherPets(Vector3 candidate)

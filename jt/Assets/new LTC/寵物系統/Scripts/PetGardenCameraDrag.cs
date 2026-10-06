@@ -43,6 +43,7 @@ public sealed class PetGardenCameraDrag : MonoBehaviour
 
     private void LateUpdate()
     {
+        if(PetCollectionBook.ModalOpen){isDragging=false;return;}
         if (!TryReadPointer(out Vector2 pointerPosition, out bool pressedThisFrame, out bool isPressed, out bool releasedThisFrame))
         {
             isDragging = false;

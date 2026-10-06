@@ -50,6 +50,7 @@ public sealed class PetIdleSprite : MonoBehaviour
 
     private void Update()
     {
+        if(PetCollectionBook.ModalOpen)return;
         if (frames == null || frames.Length == 0)
             return;
 

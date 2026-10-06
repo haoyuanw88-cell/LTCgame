@@ -64,7 +64,20 @@ public sealed class LTCProgressionPanel : MonoBehaviour
         if (header == null) return;
 
         Button open = Button(header, "每日任務與成就", "每日任務與成就", green);
-        SetRect(open.GetComponent<RectTransform>(), new Vector2(0.59f, 0.18f), new Vector2(0.765f, 0.82f));
+        SetRect(open.GetComponent<RectTransform>(), new Vector2(0.43f, 0.16f), new Vector2(0.68f, 0.84f));
+        Image coinFrame = header.Find("金幣區")?.GetComponent<Image>();
+        if (coinFrame != null)
+        {
+            open.image.sprite = coinFrame.sprite;
+            open.image.type = coinFrame.type;
+            open.image.color = coinFrame.color;
+        }
+        TMP_Text openLabel = open.GetComponentInChildren<TMP_Text>();
+        openLabel.color = new Color(.25f, .19f, .15f);
+        openLabel.fontSize = 23;
+        openLabel.enableAutoSizing = true;
+        openLabel.fontSizeMin = 20;
+        openLabel.fontSizeMax = 23;
         open.onClick.AddListener(Open);
 
         overlay = Panel(canvas, "成就與每日任務", new Color(0.08f, 0.10f, 0.08f, 0.74f));

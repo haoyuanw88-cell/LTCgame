@@ -40,6 +40,7 @@ public sealed class googlelogin : MonoBehaviour
     string codeVerifier;
     string activeRedirectUri;
     bool loginInProgress;
+    bool switchingGoogleAccount;
     PlayerIdentityService identityService;
 
     void Start()
@@ -80,6 +81,8 @@ public sealed class googlelogin : MonoBehaviour
 
         try
         {
+            switchingGoogleAccount = identityService != null && identityService.IsReady &&
+                                     string.Equals(identityService.AuthProvider, "google", StringComparison.OrdinalIgnoreCase);
             StopListener();
             pendingState = CreateRandomUrlSafeValue(32);
             pendingNonce = CreateRandomUrlSafeValue(32);
@@ -93,6 +96,7 @@ public sealed class googlelogin : MonoBehaviour
 
             loginInProgress = true;
             SetButtonInteractable(false);
+            SetContinueInteractable(false);
             SetStatus("請在瀏覽器選擇 Google 帳號…");
             Application.OpenURL(BuildAuthorizationUrl(callbackUri.AbsoluteUri));
         }
@@ -240,24 +244,26 @@ public sealed class googlelogin : MonoBehaviour
             }
 
             SetStatus("正在建立遊戲帳號…");
-            PlayerIdentityService.SignInWithGoogle(tokenResponse.id_token, pendingNonce, OnBackendLoginCompleted);
+            PlayerIdentityService.SignInWithGoogle(tokenResponse.id_token, pendingNonce,
+                switchingGoogleAccount, OnBackendLoginCompleted);
         }
     }
 
     void OnBackendLoginCompleted(bool success, string message)
     {
         loginInProgress = false;
+        switchingGoogleAccount = false;
         ClearTransientSecrets();
-        SetStatus(message);
         if (!success)
         {
-            SetButtonInteractable(true);
-            SetContinueInteractable(false);
+            RefreshAuthenticationUi(identityService, false);
+            SetStatus(message);
             return;
         }
 
-        SetButtonInteractable(false);
+        SetButtonInteractable(true);
         SetContinueInteractable(true);
+        SetStatus(message + "（" + PlayerIdentityService.Current.PlayerCode + "）；再按 Google 可切換帳號");
         Debug.Log("Google 登入及 LTC 玩家身分驗證成功：" + PlayerIdentityService.Current.PlayerCode);
     }
 
@@ -266,14 +272,14 @@ public sealed class googlelogin : MonoBehaviour
         RefreshAuthenticationUi(identityService);
     }
 
-    void RefreshAuthenticationUi(PlayerIdentityService service)
+    void RefreshAuthenticationUi(PlayerIdentityService service, bool updateStatus = true)
     {
         bool signedInWithGoogle = service != null && service.IsReady &&
                                   string.Equals(service.AuthProvider, "google", StringComparison.OrdinalIgnoreCase);
-        SetButtonInteractable(!signedInWithGoogle && !loginInProgress);
+        SetButtonInteractable(!loginInProgress);
         SetContinueInteractable(signedInWithGoogle);
-        SetStatus(signedInWithGoogle
-            ? "Google 登入完成，可以開始遊戲"
+        if (updateStatus) SetStatus(signedInWithGoogle
+            ? "Google 登入完成；再按 Google 按鈕可切換帳號"
             : service != null && service.RequiresGoogleSignIn
                 ? "請用原 Google 帳號恢復 " + service.ExpectedGooglePlayer
                 : "請先使用 Google 帳號登入");
@@ -302,8 +308,9 @@ public sealed class googlelogin : MonoBehaviour
     {
         StopListener();
         loginInProgress = false;
+        switchingGoogleAccount = false;
         ClearTransientSecrets();
-        SetButtonInteractable(true);
+        RefreshAuthenticationUi(identityService, false);
         SetStatus(message);
     }
 

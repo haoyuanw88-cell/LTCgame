@@ -27,10 +27,12 @@ public sealed class LTCMainPageTheme : MonoBehaviour
         {
             var image=page.GetComponent<Image>(); image.sprite=source.background;image.color=Color.white;image.type=Image.Type.Simple;
             foreach(var text in page.GetComponentsInChildren<TMP_Text>(true))
-            {text.font=font;text.color=ink; text.enableAutoSizing=true;text.fontSizeMin=text.fontSize*.8f;text.fontSizeMax=text.fontSize;}
+            {text.font=font;text.color=ink; text.fontSize=Mathf.Max(32,text.fontSize);text.enableAutoSizing=false;text.fontSizeMin=text.fontSize;text.fontSizeMax=text.fontSize;}
             foreach(var button in page.GetComponentsInChildren<Button>(true)) Skin(button.GetComponent<Image>(),sage);
             foreach(var shadow in page.GetComponentsInChildren<Shadow>(true))shadow.enabled=false;
-            Label(page,"ThemeNote","與遊戲相伴\n天天都有好心情",20,.03f,.915f,.17f,.98f);
+            var note=Label(page,"ThemeNote","與遊戲相伴\n天天都有好心情",24,.035f,.905f,.18f,.98f);
+            note.alignment=TextAlignmentOptions.Center;
+            note.fontSizeMin=24;note.fontSizeMax=24;
         }
 
         var header=games.Find("玩家資訊列");Place(header,.22f,.89f,.89f,.985f);Skin(header.GetComponent<Image>(),cream);
@@ -43,16 +45,26 @@ public sealed class LTCMainPageTheme : MonoBehaviour
         Place(games.Find("主標題"),.07f,.745f,.92f,.85f);
         games.Find("主標題").GetComponent<TMP_Text>().text="今天，一起玩點什麼？";
         Place(games.Find("副標題"),.07f,.68f,.92f,.745f);
-        var scroll=games.Find("能力分類滑動區");Place(scroll,.065f,.205f,.935f,.67f);scroll.GetComponent<Image>().color=Color.clear;
+        var scroll=games.Find("能力分類滑動區");Place(scroll,.065f,.195f,.935f,.675f);scroll.GetComponent<Image>().color=Color.clear;
+        var viewport=(RectTransform)scroll.Find("Viewport");
+        viewport.offsetMin=new Vector2(12,0);viewport.offsetMax=new Vector2(-12,0);
         var content=scroll.Find("Viewport/Content");((RectTransform)content).anchoredPosition=Vector2.zero;int n=0;
+        var horizontal=content.GetComponent<HorizontalLayoutGroup>();
+        if(horizontal){horizontal.padding=new RectOffset(18,18,8,8);horizontal.childControlHeight=true;horizontal.childForceExpandHeight=false;horizontal.childAlignment=TextAnchor.MiddleLeft;}
         foreach(Transform card in content)
         {
             var tint=new[]{rose,sage,blue,new Color(1f,.91f,.70f)}[n++%4];Skin(card.GetComponent<Image>(),tint);
-            var layout=card.GetComponent<LayoutElement>();if(layout){layout.preferredWidth=410;layout.minWidth=410;layout.preferredHeight=310;layout.minHeight=290;}
+            var layout=card.GetComponent<LayoutElement>();if(layout){layout.preferredWidth=620;layout.minWidth=620;layout.preferredHeight=350;layout.minHeight=0;}
+            Place(card.Find("能力名稱"),.05f,.77f,.82f,.96f);
+            Place(card.Find("能力說明"),.05f,.51f,.95f,.77f);
+            int buttonIndex=0;
+            foreach(Transform child in card)if(child.GetComponent<Button>()){
+                float top=.49f-buttonIndex++*.23f;Place(child,.05f,top-.20f,.95f,top);
+            }
             foreach(var button in card.GetComponentsInChildren<Button>(true))Skin(button.GetComponent<Image>(),cream);
             Skin(card.Find("能力徽章")?.GetComponent<Image>(),cream);
         }
-        Label(games,"ThemeFooter","左右滑動，找到喜歡的遊戲",18,.2f,.135f,.8f,.185f).alignment=TextAlignmentOptions.Center;
+        Label(games,"ThemeFooter","左右滑動，找到喜歡的遊戲",32,.2f,.13f,.8f,.19f).alignment=TextAlignmentOptions.Center;
 
         Place(profile.Find("我的標題"),.25f,.895f,.75f,.98f);
         profile.Find("我的標題").GetComponent<TMP_Text>().text="我的小天地";
@@ -82,7 +94,7 @@ public sealed class LTCMainPageTheme : MonoBehaviour
         {
             var b=navigation.Find(names[i]);Place(b,i*.2f+.003f,.04f,(i+1)*.2f-.003f,.96f);Skin(b.GetComponent<Image>(),cream);
             var label=b.GetComponentsInChildren<TMP_Text>(true).FirstOrDefault();
-            if(label){Place(label.transform,.40f,.08f,.94f,.92f);label.font=font;label.color=ink;label.fontSize=28;label.enableAutoSizing=true;label.fontSizeMin=22;label.fontSizeMax=28;}
+            if(label){Place(label.transform,.40f,.08f,.94f,.92f);label.font=font;label.color=ink;label.fontSize=34;label.enableAutoSizing=false;label.fontSizeMin=34;label.fontSizeMax=34;}
             var icon=Panel(b,"ThemeIcon",Color.white,.10f,.10f,.36f,.90f).GetComponent<Image>();icon.sprite=source.navigationIcons[i];icon.type=Image.Type.Simple;icon.preserveAspect=true;icon.raycastTarget=false;
         }
     }
@@ -97,8 +109,10 @@ public sealed class LTCMainPageTheme : MonoBehaviour
     void OnDestroy(){if(identity!=null)identity.IdentityChanged-=RefreshIdentity;}
     void StyleHeaderActions()
     {
-        var b=games.Find("玩家資訊列/成就任務");if(!b)return;
-        Place(b,.43f,.16f,.68f,.84f);Skin(b.GetComponent<Image>(),sage);
+        var b=games.Find("玩家資訊列/每日任務與成就");if(!b)return;
+        Place(b,.43f,.16f,.68f,.84f);
+        var coin=games.Find("玩家資訊列/金幣區")?.GetComponent<Image>();
+        var image=b.GetComponent<Image>();if(coin&&image){image.sprite=coin.sprite;image.type=coin.type;image.color=coin.color;}
         foreach(var text in b.GetComponentsInChildren<TMP_Text>(true)){text.font=font;text.color=ink;}
     }
     void RefreshIdentity(){if(playerId)playerId.text=identity!=null&&identity.IsReady?identity.PlayerCode:"尚未登入";}
@@ -116,7 +130,7 @@ public sealed class LTCMainPageTheme : MonoBehaviour
     TMP_Text Label(Transform parent,string name,string value,float size,float x,float y,float xx,float yy)
     {
         var t=parent.Find(name);if(!t){var go=new GameObject(name,typeof(RectTransform),typeof(TextMeshProUGUI));go.transform.SetParent(parent,false);t=go.transform;}
-        Place(t,x,y,xx,yy);var label=t.GetComponent<TMP_Text>();label.font=font;label.text=value;label.fontSize=size;label.color=ink;label.raycastTarget=false;label.enableAutoSizing=true;label.fontSizeMin=size*.8f;label.fontSizeMax=size;return label;
+        Place(t,x,y,xx,yy);var label=t.GetComponent<TMP_Text>();label.font=font;label.text=value;label.fontSize=size;label.color=ink;label.raycastTarget=false;label.enableAutoSizing=false;label.fontSizeMin=size;label.fontSizeMax=size;return label;
     }
     static void Place(Transform t,float x,float y,float xx,float yy){if(!t)return;var r=t as RectTransform;r.anchorMin=new Vector2(x,y);r.anchorMax=new Vector2(xx,yy);r.offsetMin=r.offsetMax=Vector2.zero;}
 }

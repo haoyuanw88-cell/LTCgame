@@ -57,7 +57,9 @@ namespace LTC.Identity
         public string AccessToken { get; private set; } = string.Empty;
         public string InstallationUid { get; private set; } = string.Empty;
         public string AuthProvider { get; private set; } = "guest";
-        public string StableLocalPlayerKey => "guest-" + InstallationUid;
+        public string StableLocalPlayerKey => IsReady && AuthProvider == "google"
+            ? PlayerId
+            : "guest-" + InstallationUid;
         public event Action IdentityChanged;
 
         string ApiBaseUrl => PlayerPrefs.GetString(ApiBaseUrlPlayerPrefsKey, DefaultApiBaseUrl).Trim().TrimEnd('/');
@@ -133,6 +135,12 @@ namespace LTC.Identity
 
         public static void SignInWithGoogle(string idToken, string nonce, Action<bool, string> completed)
         {
+            SignInWithGoogle(idToken, nonce, false, completed);
+        }
+
+        public static void SignInWithGoogle(string idToken, string nonce, bool switchAccount,
+            Action<bool, string> completed)
+        {
             var service = Current as PlayerIdentityService;
             if (service == null)
             {
@@ -146,7 +154,7 @@ namespace LTC.Identity
             }
             if (service.signInRoutine != null) { service.StopCoroutine(service.signInRoutine); service.signInRoutine = null; }
             service.googleSignInRoutine = service.StartCoroutine(
-                service.GoogleSignInRoutine(idToken, nonce, completed));
+                service.GoogleSignInRoutine(idToken, nonce, switchAccount, completed));
         }
 
         public static void SyncCurrentProfile()
@@ -208,7 +216,8 @@ namespace LTC.Identity
             signInRoutine = null;
         }
 
-        IEnumerator GoogleSignInRoutine(string idToken, string nonce, Action<bool, string> completed)
+        IEnumerator GoogleSignInRoutine(string idToken, string nonce, bool switchAccount,
+            Action<bool, string> completed)
         {
             if (string.IsNullOrWhiteSpace(idToken) || string.IsNullOrWhiteSpace(nonce))
             {
@@ -221,9 +230,12 @@ namespace LTC.Identity
             {
                 idToken = idToken,
                 nonce = nonce,
-                installationUid = string.IsNullOrEmpty(ExpectedGooglePlayer) ? InstallationUid : string.Empty,
-                expectedPlayerId = ExpectedGooglePlayer,
-                displayName = ResolveDisplayName()
+                // Switching is an explicit new Google identity. Never merge the
+                // previous player's installation or enforce their recovery ID.
+                installationUid = switchAccount || !string.IsNullOrEmpty(ExpectedGooglePlayer)
+                    ? string.Empty : InstallationUid,
+                expectedPlayerId = switchAccount ? string.Empty : ExpectedGooglePlayer,
+                displayName = switchAccount ? string.Empty : ResolveDisplayName()
             };
             byte[] body = Encoding.UTF8.GetBytes(JsonUtility.ToJson(payload));
             using (var request = new UnityWebRequest(ApiBaseUrl + "/api/v2/auth/google", UnityWebRequest.kHttpVerbPOST))
@@ -242,7 +254,8 @@ namespace LTC.Identity
 
                     if (IsCompleteSession(response))
                     {
-                        if (!string.IsNullOrEmpty(ExpectedGooglePlayer) && response.playerId != ExpectedGooglePlayer)
+                        if (!switchAccount && !string.IsNullOrEmpty(ExpectedGooglePlayer) &&
+                            response.playerId != ExpectedGooglePlayer)
                         {
                             googleSignInRoutine = null;
                             completed?.Invoke(false, "登入帳號與原玩家不符，請選擇原本的 Google 帳號。");
@@ -283,11 +296,15 @@ namespace LTC.Identity
             {
                 using (var request = new UnityWebRequest(ApiBaseUrl + "/api/v1/presence/heartbeat", UnityWebRequest.kHttpVerbPOST))
                 {
+                    string requestToken = AccessToken;
                     request.uploadHandler = new UploadHandlerRaw(Array.Empty<byte>());
                     request.downloadHandler = new DownloadHandlerBuffer();
-                    request.SetRequestHeader("Authorization", "Bearer " + AccessToken);
+                    request.SetRequestHeader("Authorization", "Bearer " + requestToken);
                     request.timeout = 10;
                     yield return request.SendWebRequest();
+                    // A response from the previous account must not expire the
+                    // newly selected account's session.
+                    if (requestToken != AccessToken) yield break;
                     if (request.responseCode == 401)
                     {
                         string expiredProvider = AuthProvider;
@@ -367,6 +384,9 @@ namespace LTC.Identity
 
         void ApplySession(PlayerSessionResponse response, string provider, bool persist)
         {
+            if (IsReady && AuthProvider == "google" && provider == "google" &&
+                !string.IsNullOrEmpty(PlayerId) && PlayerId != response.playerId)
+                SwitchLocalProfile(PlayerId, response.playerId);
             if (provider == "google") RememberGoogleIdentity(response.playerId);
             PlayerId = response.playerId;
             PlayerCode = response.playerCode;
@@ -382,6 +402,28 @@ namespace LTC.Identity
             // A restored account must not be overwritten with another session's
             // local profile. Profile writes are triggered explicitly by the UI.
             IdentityChanged?.Invoke();
+        }
+
+        static void SwitchLocalProfile(string previousPlayerId, string nextPlayerId)
+        {
+            const string prefix = "LTC_LocalProfile_";
+            string[] fields = { "LTC_ProfileBirthDate", "LTC_ProfileGender",
+                "LTC_ProfileEducation", "LTC_OnboardingCompleted_v1" };
+            foreach (string field in fields)
+            {
+                string savedValue = field == "LTC_OnboardingCompleted_v1"
+                    ? PlayerPrefs.GetInt(field, 0).ToString()
+                    : PlayerPrefs.GetString(field, string.Empty);
+                PlayerPrefs.SetString(prefix + previousPlayerId + "_" + field, savedValue);
+                string nextValue = PlayerPrefs.GetString(prefix + nextPlayerId + "_" + field, string.Empty);
+                if (field == "LTC_OnboardingCompleted_v1")
+                    PlayerPrefs.SetInt(field, nextValue == "1" ? 1 : 0);
+                else if (string.IsNullOrEmpty(nextValue))
+                    PlayerPrefs.DeleteKey(field);
+                else
+                    PlayerPrefs.SetString(field, nextValue);
+            }
+            PlayerPrefs.Save();
         }
 
         bool TryRestoreCachedSession()
