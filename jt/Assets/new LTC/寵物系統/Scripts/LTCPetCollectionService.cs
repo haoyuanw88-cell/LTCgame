@@ -77,6 +77,8 @@ public static class LTCPetCollectionService
 
     public static bool IsOwned(string petId)
     {
+        // Original rabbit and cat remain starter pets; never charge to obtain them again.
+        if (petId == "rabbit" || petId == "cat") return true;
         return !string.IsNullOrWhiteSpace(petId) && PlayerPrefs.GetInt(OwnedPrefix + petId, 0) == 1;
     }
 
@@ -237,7 +239,7 @@ public static class LTCPetCollectionService
                     if (offsetX == 0 && offsetY == 0) continue;
                     int nextX = currentX + offsetX;
                     int nextY = currentY + offsetY;
-                    if (nextX < 0 || nextX >= textureWidth ||
+                    if (nextX < Mathf.Max(0, searchX) || nextX >= maxSearchX ||
                         nextY < Mathf.Max(0, searchY) || nextY >= maxSearchY)
                         continue;
                     int next = nextY * textureWidth + nextX;
@@ -248,15 +250,17 @@ public static class LTCPetCollectionService
         }
 
         const int padding = 7;
-        int outputWidth = maxX - minX + 1 + padding * 2;
-        int outputHeight = maxY - minY + 1 + padding * 2;
+        // Equal canvases and a common foot baseline prevent per-frame crop jitter.
+        int outputWidth = Mathf.Max(128, maxX - minX + 1 + padding * 2);
+        int outputHeight = Mathf.Max(128, maxY - minY + 1 + padding * 2);
+        int leftPadding = (outputWidth - (maxX - minX + 1)) / 2;
         var isolated = new Texture2D(outputWidth, outputHeight, TextureFormat.RGBA32, false);
         var isolatedPixels = new Color32[outputWidth * outputHeight];
         foreach (int sourceIndex in component)
         {
             int sourceX = sourceIndex % textureWidth;
             int sourceY = sourceIndex / textureWidth;
-            int targetX = sourceX - minX + padding;
+            int targetX = sourceX - minX + leftPadding;
             int targetY = sourceY - minY + padding;
             isolatedPixels[targetY * outputWidth + targetX] = CachedPetPixels[sourceIndex];
         }

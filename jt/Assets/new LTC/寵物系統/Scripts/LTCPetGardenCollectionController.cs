@@ -5,7 +5,8 @@ using UnityEngine.SceneManagement;
 public sealed class LTCPetGardenCollectionController : MonoBehaviour
 {
     const string SceneName = "PetGarden";
-    readonly List<GameObject> spawnedPets = new List<GameObject>();
+    readonly Dictionary<string, GameObject> spawnedPets = new Dictionary<string, GameObject>();
+    readonly HashSet<string> authoredPets = new HashSet<string>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Initialize()
@@ -25,14 +26,15 @@ public sealed class LTCPetGardenCollectionController : MonoBehaviour
 
     void Start()
     {
-        // The two showcase pets authored in the original scene are no longer free defaults.
-        // Every visible pet now comes from blind-box ownership data.
+        // Preserve the scene's original, high-resolution pets and their animation setup.
         foreach (PetWander legacyPet in FindObjectsByType<PetWander>(FindObjectsInactive.Include,
                      FindObjectsSortMode.None))
-            legacyPet.gameObject.SetActive(false);
-        foreach (PetIdleSprite legacyPet in FindObjectsByType<PetIdleSprite>(FindObjectsInactive.Include,
-                     FindObjectsSortMode.None))
-            legacyPet.gameObject.SetActive(false);
+        {
+            string petName = legacyPet.gameObject.name.ToLowerInvariant();
+            if (petName.Contains("兔") || petName.Contains("rabbit")) authoredPets.Add("rabbit");
+            if (petName.Contains("貓") || petName.Contains("猫") || petName.Contains("cat")) authoredPets.Add("cat");
+            legacyPet.gameObject.SetActive(true);
+        }
 
         LTCPetCollectionService.Changed += RebuildGarden;
         RebuildGarden();
@@ -42,20 +44,19 @@ public sealed class LTCPetGardenCollectionController : MonoBehaviour
 
     void RebuildGarden()
     {
-        foreach (GameObject pet in spawnedPets)
-            if (pet != null) Destroy(pet);
-        spawnedPets.Clear();
-
         IReadOnlyList<LTCPetDefinition> owned = LTCPetCollectionService.GetOwnedPets();
         for (int i = 0; i < owned.Count; i++)
         {
             LTCPetDefinition definition = owned[i];
+            // A draw must not reset existing pets, their positions or animation phase.
+            if (authoredPets.Contains(definition.id)) continue;
+            if (spawnedPets.TryGetValue(definition.id, out GameObject existing) && existing != null) continue;
             GameObject pet = new GameObject("盲盒寵物_" + definition.displayName);
             pet.transform.SetParent(transform, false);
             pet.transform.position = InitialPosition(i, owned.Count);
             var walker = pet.AddComponent<LTCPetSpriteWalker>();
             walker.Initialize(definition, i);
-            spawnedPets.Add(pet);
+            spawnedPets[definition.id] = pet;
         }
     }
 
@@ -95,7 +96,7 @@ sealed class LTCPetSpriteWalker : MonoBehaviour
 
     void Update()
     {
-        if (frames == null || frames.Length == 0) return;
+        if (PetCollectionBook.ModalOpen || frames == null || frames.Length == 0) return;
         UpdateDepth();
         if (!walking)
         {
@@ -126,7 +127,7 @@ sealed class LTCPetSpriteWalker : MonoBehaviour
         walking = false;
         frameIndex = 0;
         if (frames != null && frames.Length > 0) rendererComponent.sprite = frames[0];
-        pauseUntil = Time.time + Random.Range(0.8f, 2.4f);
+        pauseUntil = Time.time + Random.Range(3f, 5f);
     }
 
     void Animate()
@@ -140,7 +141,20 @@ sealed class LTCPetSpriteWalker : MonoBehaviour
     void FitHeight(float targetHeight)
     {
         if (rendererComponent.sprite == null || rendererComponent.sprite.bounds.size.y <= 0.001f) return;
-        float scale = targetHeight / rendererComponent.sprite.bounds.size.y;
+        Sprite sprite = rendererComponent.sprite;
+        // Transparent animation padding must not make newly collected pets tiny.
+        Color32[] pixels = sprite.texture.GetPixels32();
+        int minY = sprite.texture.height;
+        int maxY = -1;
+        for (int y = 0; y < sprite.texture.height; y++)
+            for (int x = 0; x < sprite.texture.width; x++)
+                if (pixels[y * sprite.texture.width + x].a > 20)
+                {
+                    minY = Mathf.Min(minY, y);
+                    maxY = Mathf.Max(maxY, y);
+                }
+        float visibleHeight = maxY >= minY ? (maxY - minY + 1) / sprite.pixelsPerUnit : sprite.bounds.size.y;
+        float scale = targetHeight / visibleHeight;
         transform.localScale = new Vector3(scale, scale, 1f);
     }
 
