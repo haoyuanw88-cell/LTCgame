@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
@@ -25,6 +26,7 @@ public sealed class LTCGardenShopController : MonoBehaviour
         public string symbol;
         public bool available;
         public bool consumable;
+        public bool blindBox;
     }
 
     const string ShopScene = "shop";
@@ -41,6 +43,10 @@ public sealed class LTCGardenShopController : MonoBehaviour
 
     readonly List<ShopItem> items = new List<ShopItem>
     {
+        new ShopItem { id = "PET_BLIND_BOX", name = "驚喜寵物盲盒", category = "盲盒",
+            description = "每次 100 金幣，優先獲得尚未擁有的寵物。首次完成任意遊戲可免費抽一次。",
+            price = LTCPetCollectionService.DrawCost, symbol = "禮", available = true, consumable = false,
+            blindBox = true },
         new ShopItem { id = "F_APPLE", name = "元氣蘋果", category = FoodCategory,
             description = "清脆香甜的每日點心，適合陪伴寵物散步後一起享用。",
             price = 1, resourceIcon = "Shop/apple", symbol = "蘋", available = true, consumable = true },
@@ -62,6 +68,7 @@ public sealed class LTCGardenShopController : MonoBehaviour
     };
 
     TMP_FontAsset font;
+    Transform uiRoot;
     Transform productContent;
     TMP_Text coinText;
     TMP_Text detailName;
@@ -118,6 +125,7 @@ public sealed class LTCGardenShopController : MonoBehaviour
         GameObject canvasObject = new GameObject("Garden Shop Canvas", typeof(RectTransform), typeof(Canvas),
             typeof(CanvasScaler), typeof(GraphicRaycaster));
         canvasObject.transform.SetParent(transform, false);
+        uiRoot = canvasObject.transform;
         Canvas canvas = canvasObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 600;
@@ -305,7 +313,7 @@ public sealed class LTCGardenShopController : MonoBehaviour
             : new Color(0.90f, 0.88f, 0.80f));
         SetRect(art.GetComponent<RectTransform>(), new Vector2(0.08f, 0.37f), new Vector2(0.92f, 0.92f));
 
-        Sprite sprite = string.IsNullOrEmpty(item.resourceIcon) ? null : Resources.Load<Sprite>(item.resourceIcon);
+        Sprite sprite = ResolveItemSprite(item);
         if (sprite != null)
         {
             Image image = new GameObject("商品圖片", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
@@ -340,24 +348,45 @@ public sealed class LTCGardenShopController : MonoBehaviour
         selected = item;
         statusText.text = "";
         detailName.text = item.name;
-        detailCategory.text = item.category == FoodCategory ? "寵物點心" : "生活用品";
+        detailCategory.text = item.blindBox ? "限定抽獎" :
+            item.category == FoodCategory ? "寵物點心" : "生活用品";
         detailDescription.text = item.description;
-        detailPrice.text = item.available ? item.price + " 金幣" : "尚未開放";
-        detailOwned.text = item.consumable
-            ? "目前持有：" + InventoryData.GetItemCount(item.id)
-            : InventoryData.HasItem(item.id) ? "已擁有" : "尚未擁有";
 
-        Sprite sprite = string.IsNullOrEmpty(item.resourceIcon) ? null : Resources.Load<Sprite>(item.resourceIcon);
+        if (item.blindBox)
+        {
+            int tickets = LTCPetCollectionService.FreeTickets;
+            detailPrice.text = tickets > 0 ? "免費券 " + tickets + " 張" : LTCPetCollectionService.DrawCost + " 金幣";
+            detailOwned.text = "已蒐集：" + LTCPetCollectionService.OwnedCount + " / " +
+                               LTCPetCollectionService.AllPets.Count;
+        }
+        else
+        {
+            detailPrice.text = item.available ? item.price + " 金幣" : "尚未開放";
+            detailOwned.text = item.consumable
+                ? "目前持有：" + InventoryData.GetItemCount(item.id)
+                : InventoryData.HasItem(item.id) ? "已擁有" : "尚未擁有";
+        }
+
+        Sprite sprite = ResolveItemSprite(item);
         detailIcon.sprite = sprite;
         detailIcon.enabled = sprite != null;
         detailSymbol.text = sprite == null ? item.symbol : "";
-        buyButton.interactable = item.available;
-        buyButtonLabel.text = item.available ? "用 " + item.price + " 金幣購買" : "即將推出";
+        buyButton.interactable = item.available &&
+            (!item.blindBox || LTCPetCollectionService.OwnedCount < LTCPetCollectionService.AllPets.Count);
+        buyButtonLabel.text = !item.available ? "即將推出" :
+            item.blindBox && LTCPetCollectionService.FreeTickets > 0 ? "使用免費券抽一次" :
+            item.blindBox ? "用 100 金幣抽一次" : "用 " + item.price + " 金幣購買";
     }
 
     void BuySelected()
     {
         if (selected == null || !selected.available) return;
+        if (selected.blindBox)
+        {
+            StartCoroutine(DrawBlindBoxRoutine());
+            return;
+        }
+
         if (CoinData.TotalCoins < selected.price)
         {
             statusText.text = "金幣不足，完成遊戲或每日任務可獲得金幣";
@@ -365,7 +394,7 @@ public sealed class LTCGardenShopController : MonoBehaviour
         }
 
         buyButton.interactable = false;
-        buyButtonLabel.text = "購買中…";
+        buyButtonLabel.text = "購買中...";
         statusText.text = "正在連線確認商品";
         ShopItem purchasing = selected;
         CoinCloudService.Purchase(purchasing.id, 1, result =>
@@ -383,11 +412,190 @@ public sealed class LTCGardenShopController : MonoBehaviour
                 InventoryData.SetItemCount(purchasing.id, result.itemQuantity);
             else
                 InventoryData.AddItem(purchasing.id);
-            statusText.text = "購買成功，已放入寵物背包";
             SelectItem(purchasing);
             statusText.text = "購買成功，已放入寵物背包";
         });
     }
+
+    IEnumerator DrawBlindBoxRoutine()
+    {
+        buyButton.interactable = false;
+        buyButtonLabel.text = "盲盒開啟中...";
+        statusText.text = "驚喜正在準備中";
+
+        GameObject overlay = Panel(uiRoot, "寵物盲盒抽獎遮罩", new Color(0f, 0f, 0f, 0.72f));
+        overlay.transform.SetAsLastSibling();
+        overlay.GetComponent<Image>().raycastTarget = true;
+
+        TMP_Text glow = Text(overlay.transform, "中央光芒", "★", 420, FontStyles.Bold,
+            TextAlignmentOptions.Center);
+        glow.color = new Color(1f, 0.72f, 0.20f, 0.13f);
+        SetRect(glow.rectTransform, new Vector2(0.23f, 0.08f), new Vector2(0.77f, 0.92f));
+
+        TMP_Text overlayTitle = Text(overlay.transform, "抽獎標題", "驚喜盲盒開啟中…", 48,
+            FontStyles.Bold, TextAlignmentOptions.Center);
+        overlayTitle.color = Color.white;
+        SetRect(overlayTitle.rectTransform, new Vector2(0.18f, 0.79f), new Vector2(0.82f, 0.91f));
+
+        TMP_Text overlaySubtitle = Text(overlay.transform, "抽獎提示", "看看是哪位新朋友來到花園", 25,
+            FontStyles.Normal, TextAlignmentOptions.Center);
+        overlaySubtitle.color = new Color(1f, 0.90f, 0.68f, 1f);
+        SetRect(overlaySubtitle.rectTransform, new Vector2(0.20f, 0.69f), new Vector2(0.80f, 0.77f));
+
+        GameObject boxObject = new GameObject("中央盲盒", typeof(RectTransform), typeof(Image));
+        boxObject.transform.SetParent(overlay.transform, false);
+        Image boxImage = boxObject.GetComponent<Image>();
+        boxImage.preserveAspect = true;
+        boxImage.raycastTarget = false;
+        SetRect(boxImage.rectTransform, new Vector2(0.34f, 0.22f), new Vector2(0.66f, 0.70f));
+
+        var stars = new List<TMP_Text>();
+        var starDirections = new List<Vector2>();
+        for (int i = 0; i < 14; i++)
+        {
+            float angle = i * Mathf.PI * 2f / 14f;
+            Vector2 direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+            TMP_Text star = Text(overlay.transform, "閃亮星星_" + i, "★",
+                i % 3 == 0 ? 56 : 38, FontStyles.Bold, TextAlignmentOptions.Center);
+            RectTransform starRect = star.rectTransform;
+            starRect.anchorMin = new Vector2(0.5f, 0.46f);
+            starRect.anchorMax = new Vector2(0.5f, 0.46f);
+            starRect.pivot = new Vector2(0.5f, 0.5f);
+            starRect.sizeDelta = new Vector2(70f, 70f);
+            starRect.anchoredPosition = Vector2.zero;
+            star.color = new Color(1f, i % 2 == 0 ? 0.78f : 0.48f, 0.12f, 0f);
+            stars.Add(star);
+            starDirections.Add(direction);
+        }
+
+        Sprite[] animationFrames = LTCPetCollectionService.GetBlindBoxFrames();
+        boxImage.enabled = animationFrames.Length > 0;
+        for (int i = 0; i < animationFrames.Length; i++)
+        {
+            boxImage.sprite = animationFrames[i];
+            float pulse = 1f + Mathf.Sin(i * 1.8f) * 0.055f;
+            boxImage.rectTransform.localScale = Vector3.one * pulse;
+            boxImage.rectTransform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(i * 2.2f) * 4f);
+            glow.rectTransform.localScale = Vector3.one * (0.94f + Mathf.Sin(i * 0.8f) * 0.06f);
+            yield return new WaitForSecondsRealtime(0.085f);
+        }
+
+        boxImage.rectTransform.localScale = Vector3.one;
+        boxImage.rectTransform.localRotation = Quaternion.identity;
+        LTCPetDrawResult result = LTCPetCollectionService.Draw();
+        if (!result.success)
+        {
+            Destroy(overlay);
+            SelectItem(selected);
+            statusText.text = result.message;
+            yield break;
+        }
+
+        GameObject flash = Panel(overlay.transform, "開箱閃光", new Color(1f, 0.95f, 0.72f, 0f));
+        flash.transform.SetAsLastSibling();
+        Image flashImage = flash.GetComponent<Image>();
+        float elapsed = 0f;
+        while (elapsed < 0.42f)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / 0.42f);
+            float alpha = Mathf.Sin(t * Mathf.PI) * 0.82f;
+            flashImage.color = new Color(1f, 0.96f, 0.78f, alpha);
+            yield return null;
+        }
+        flash.SetActive(false);
+
+        boxImage.sprite = LTCPetCollectionService.GetPreviewSprite(result.pet);
+        boxImage.enabled = boxImage.sprite != null;
+        boxImage.rectTransform.localScale = Vector3.one * 0.12f;
+        boxImage.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -12f);
+        overlayTitle.text = "恭喜獲得新朋友！";
+        overlaySubtitle.text = "「" + result.pet.displayName + "」加入你的寵物花園";
+
+        elapsed = 0f;
+        while (elapsed < 0.90f)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / 0.90f);
+            float eased = Mathf.SmoothStep(0f, 1f, Mathf.Min(1f, t / 0.72f));
+            float scale = t < 0.72f
+                ? Mathf.Lerp(0.12f, 1.18f, eased)
+                : Mathf.Lerp(1.18f, 1f, (t - 0.72f) / 0.28f);
+            boxImage.rectTransform.localScale = Vector3.one * scale;
+            boxImage.rectTransform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Lerp(-12f, 0f, eased));
+            glow.color = new Color(1f, 0.72f, 0.20f, Mathf.Lerp(0.13f, 0.34f, eased));
+            glow.rectTransform.localScale = Vector3.one * Mathf.Lerp(0.65f, 1.08f, eased);
+
+            for (int i = 0; i < stars.Count; i++)
+            {
+                float stagger = Mathf.Clamp01((t - i * 0.018f) / 0.68f);
+                float distance = Mathf.Lerp(12f, 255f + (i % 3) * 28f, Mathf.SmoothStep(0f, 1f, stagger));
+                stars[i].rectTransform.anchoredPosition = starDirections[i] * distance;
+                Color color = stars[i].color;
+                color.a = Mathf.Sin(stagger * Mathf.PI) * 0.95f;
+                stars[i].color = color;
+                stars[i].rectTransform.localScale = Vector3.one * Mathf.Lerp(0.25f, 1.15f, stagger);
+                stars[i].rectTransform.localRotation = Quaternion.Euler(0f, 0f, elapsed * (70f + i * 5f));
+            }
+            yield return null;
+        }
+
+        for (int i = 0; i < stars.Count; i++)
+        {
+            Color color = stars[i].color;
+            color.a = 0.88f;
+            stars[i].color = color;
+        }
+
+        TMP_Text continueText = Text(overlay.transform, "繼續提示", "點一下畫面繼續", 24,
+            FontStyles.Bold, TextAlignmentOptions.Center);
+        continueText.color = new Color(1f, 1f, 1f, 0.90f);
+        SetRect(continueText.rectTransform, new Vector2(0.30f, 0.08f), new Vector2(0.70f, 0.16f));
+
+        if (EventSystem.current != null)
+            EventSystem.current.SetSelectedGameObject(null);
+        yield return new WaitForSecondsRealtime(0.25f);
+
+        bool dismissed = false;
+        Button dismissButton = overlay.AddComponent<Button>();
+        dismissButton.transition = Selectable.Transition.None;
+        dismissButton.targetGraphic = overlay.GetComponent<Image>();
+        dismissButton.onClick.AddListener(() => dismissed = true);
+        while (!dismissed)
+        {
+            float pulse = 0.82f + Mathf.Sin(Time.unscaledTime * 4f) * 0.12f;
+            continueText.color = new Color(1f, 1f, 1f, pulse);
+            yield return null;
+        }
+
+        detailIcon.sprite = LTCPetCollectionService.GetPreviewSprite(result.pet);
+        detailIcon.enabled = detailIcon.sprite != null;
+        detailName.text = "恭喜獲得：" + result.pet.displayName;
+        detailCategory.text = result.usedFreeTicket ? "免費成就獎勵" : "寵物盲盒";
+        detailDescription.text = "新朋友已加入寵物花園，現在可以前往花園和牠見面。";
+        detailOwned.text = "已蒐集：" + LTCPetCollectionService.OwnedCount + " / " +
+                           LTCPetCollectionService.AllPets.Count;
+        detailPrice.text = result.usedFreeTicket ? "本次免費" : "測試金幣固定 100";
+        statusText.text = result.message;
+        buyButton.interactable = LTCPetCollectionService.OwnedCount < LTCPetCollectionService.AllPets.Count;
+        buyButtonLabel.text = LTCPetCollectionService.FreeTickets > 0 ? "再用免費券抽一次" : "再抽一次";
+        Destroy(overlay);
+        RefreshProducts();
+    }
+
+    Sprite ResolveItemSprite(ShopItem item)
+    {
+        if (item != null && item.blindBox)
+        {
+            Sprite[] frames = LTCPetCollectionService.GetBlindBoxFrames();
+            return frames.Length == 0 ? null : frames[0];
+        }
+        return item == null || string.IsNullOrEmpty(item.resourceIcon)
+            ? null
+            : Resources.Load<Sprite>(item.resourceIcon);
+    }
+
+
 
     void OnBalanceChanged(int balance)
     {

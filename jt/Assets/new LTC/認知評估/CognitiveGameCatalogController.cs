@@ -16,6 +16,7 @@ public class CognitiveGameCatalogController : MonoBehaviour
     private const string LastDailyLoginKey = "LTC_LastDailyLoginDate";
     private const int DailyLoginRewardCoins = 20;
     private const string OnboardingCompletedKey = "LTC_OnboardingCompleted_v1";
+    private static bool onboardingShownThisRun;
 
     [Header("首次登入 NPC（測試開關）")]
     [Tooltip("關閉後完全不顯示首次登入 NPC。")]
@@ -211,6 +212,12 @@ public class CognitiveGameCatalogController : MonoBehaviour
         Attention,
         ProcessingSpeed,
         Executive
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetRuntimeState()
+    {
+        onboardingShownThisRun = false;
     }
 
     private void Awake()
@@ -847,13 +854,14 @@ private void BuildStatisticsPage(Transform parent)
 
     private bool ShouldShowOnboarding()
     {
-        return enableFirstTimeOnboarding &&
+        return enableFirstTimeOnboarding && !onboardingShownThisRun &&
                (forceShowOnboardingForTesting || PlayerPrefs.GetInt(OnboardingCompletedKey, 0) == 0);
     }
 
     private void OpenOnboarding()
     {
         if (onboardingPopup == null) return;
+        onboardingShownThisRun = true;
         DateTime selectedDate = new DateTime(Mathf.Max(1900, DateTime.Today.Year - 70), 1, 1);
         string storedBirthDate = PlayerPrefs.GetString("LTC_ProfileBirthDate", string.Empty);
         if (DateTime.TryParseExact(storedBirthDate, "yyyy-MM-dd", CultureInfo.InvariantCulture,

@@ -169,10 +169,14 @@ public sealed class LTCProgressionPanel : MonoBehaviour
         detail.color = new Color(0.35f, 0.38f, 0.35f);
         SetRect(detail.rectTransform, new Vector2(0.025f, 0.08f), new Vector2(0.68f, 0.50f));
 
-        string reward = entry.rewardGranted ? "已獲得 +" + entry.rewardCoins :
-            entry.ProgressLabel + "\n獎勵 +" + entry.rewardCoins;
-        TMP_Text progress = Text(row.transform, "進度", reward + " 金幣", 18, FontStyles.Bold,
-            TextAlignmentOptions.Center);
+        string rewardName = string.IsNullOrEmpty(entry.rewardLabel)
+            ? entry.rewardCoins + " 金幣"
+            : entry.rewardLabel;
+        string reward = entry.rewardGranted
+            ? "已獲得\n" + rewardName
+            : entry.ProgressLabel + "\n獎勵 " + rewardName;
+        TMP_Text progress = Text(row.transform, "進度", reward, 18, FontStyles.Bold,
+            TextAlignmentOptions.Center);;
         progress.color = entry.completed ? green : orange;
         SetRect(progress.rectTransform, new Vector2(0.70f, 0.10f), new Vector2(0.975f, 0.90f));
     }

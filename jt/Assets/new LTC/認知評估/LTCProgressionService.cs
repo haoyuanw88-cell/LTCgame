@@ -17,6 +17,7 @@ namespace LTCCognitiveAssessment
         public float progress;
         public float target;
         public int rewardCoins;
+        public string rewardLabel;
         public bool completed;
         public bool rewardGranted;
         public long completedAtUnixMs;
@@ -98,7 +99,7 @@ namespace LTCCognitiveAssessment
             get { EnsureLoaded(); EvaluateAchievements(false); return data.achievements.Count(x => x.completed); }
         }
 
-        public static int AchievementTotalCount => Games.Length * 3;
+        public static int AchievementTotalCount => Games.Length * 3 + 1;
 
         public static void RecordCompletedGame(CognitiveAssessmentSession session)
         {
@@ -173,6 +174,11 @@ namespace LTCCognitiveAssessment
 
         static void EnsureAchievementDefinitions()
         {
+            EnsureAchievement("first_game_any", "初次遊玩", "第一次完成任意遊戲",
+                string.Empty, 1f, 0);
+            LTCProgressionEntry firstGame = data.achievements.First(item => item.id == "first_game_any");
+            firstGame.rewardLabel = "寵物盲盒免費抽 1 次";
+
             foreach (GameInfo game in Games)
             {
                 EnsureAchievement(game.Id + "_first", game.Name + "・初次完成",
@@ -212,6 +218,14 @@ namespace LTCCognitiveAssessment
                 reward += UpdateEntry(gameInfo.Id + "_veteran", count, grantRewards);
                 reward += UpdateEntry(gameInfo.Id + "_expert", score, grantRewards);
             }
+
+            LTCProgressionEntry firstGame = data.achievements.FirstOrDefault(item => item.id == "first_game_any");
+            bool rewardWasGranted = firstGame != null && firstGame.rewardGranted;
+            int completedGames = data.games.Sum(item => item.completedCount);
+            reward += UpdateEntry("first_game_any", completedGames, grantRewards);
+            if (grantRewards && firstGame != null && firstGame.completed && !rewardWasGranted)
+                LTCPetCollectionService.GrantFirstGameTicketOnce();
+
             return reward;
         }
 
