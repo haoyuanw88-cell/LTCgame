@@ -27,6 +27,7 @@ public static class LTCPetCollectionService
     const string OwnedPrefix = "LTC_PetOwned_";
     const string FreeTicketKey = "LTC_PetBlindBoxTickets";
     const string FirstGameTicketKey = "LTC_FirstGamePetTicketGranted";
+    const string StarterPetsClearedKey = "LTC_StarterPetsClearedForTesting";
 
     static readonly LTCPetDefinition[] Catalog =
     {
@@ -95,15 +96,32 @@ public static class LTCPetCollectionService
 
     public static bool IsOwned(string petId)
     {
-        // Original rabbit and cat remain starter pets; never charge to obtain them again.
-        if (petId == "rabbit" || petId == "cat") return true;
-        return !string.IsNullOrWhiteSpace(petId) && PlayerPrefs.GetInt(OwnedPrefix + petId, 0) == 1;
+        if (string.IsNullOrWhiteSpace(petId)) return false;
+        if (PlayerPrefs.GetInt(OwnedPrefix + petId, 0) == 1) return true;
+
+        bool starter = petId == "rabbit" || petId == "cat";
+        return starter && PlayerPrefs.GetInt(StarterPetsClearedKey, 0) == 0;
     }
 
     public static IReadOnlyList<LTCPetDefinition> GetOwnedPets()
     {
         return Catalog.Where(pet => IsOwned(pet.id)).ToList();
     }
+
+    public static int ResetOwnedPetsForTesting()
+    {
+        int removed = OwnedCount;
+        foreach (LTCPetDefinition pet in Catalog)
+            PlayerPrefs.DeleteKey(OwnedPrefix + pet.id);
+
+        // Rabbit and cat are normally free starters. This flag lets the temporary
+        // reset button produce a genuinely empty collection for testing.
+        PlayerPrefs.SetInt(StarterPetsClearedKey, 1);
+        PlayerPrefs.Save();
+        Changed?.Invoke();
+        return removed;
+    }
+
 
     public static LTCPetDrawResult Draw()
     {

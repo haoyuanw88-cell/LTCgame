@@ -139,6 +139,56 @@ public sealed class PetWander : MonoBehaviour
         StartPause(false);
     }
 
+    public void SetGardenVisualSize(float maxWorldSize)
+    {
+        targetHeight = Mathf.Clamp(maxWorldSize, .7f, 2.05f);
+        if (spriteRenderer == null || spriteRenderer.sprite == null) return;
+
+        Bounds visible = LTCPetCollectionService.GetVisibleBounds(spriteRenderer.sprite);
+        Vector3 worldScale = spriteRenderer.transform.lossyScale;
+        float currentSize = Mathf.Max(
+            visible.size.x * Mathf.Abs(worldScale.x),
+            visible.size.y * Mathf.Abs(worldScale.y));
+        float factor = targetHeight / Mathf.Max(.01f, currentSize);
+        Vector3 scale = spriteRenderer.transform.localScale;
+        spriteRenderer.transform.localScale = new Vector3(scale.x * factor, scale.y * factor, scale.z);
+        separationRadius = Mathf.Max(.78f, targetHeight * 1.08f);
+        SetupIdleVisual();
+    }
+
+    public void SetGardenStart(Vector3 center, float maxWorldSize)
+    {
+        transform.position = center;
+        SetGardenVisualSize(maxWorldSize);
+
+        // All pets share the complete garden and may freely pass through
+        // one another. There are no lanes, avoidance or physics collisions.
+        walkMin = new Vector2(-4.2f, -2.2f);
+        walkMax = new Vector2(4.2f, 1.1f);
+        walkSpeed = Random.Range(.88f, 1.08f);
+        minimumPause = .2f;
+        maximumPause = .8f;
+        minimumPauseAfterWalk = .65f;
+        maximumPauseAfterWalk = 1.5f;
+        StartPause(false);
+
+        // Align the actual opaque artwork to the initial slot, not its root pivot.
+        if (idleSprite != null)
+        {
+            spriteRenderer.sprite = idleSprite;
+            spriteRenderer.flipX = false;
+            spriteRenderer.transform.localScale = idleScale;
+            spriteRenderer.transform.localPosition = idleOffset;
+            displayingIdle = true;
+        }
+        ClampRenderedSize();
+        Bounds visible = LTCPetCollectionService.GetVisibleBounds(spriteRenderer.sprite);
+        Vector3 visibleCenter = spriteRenderer.transform.TransformPoint(visible.center);
+        transform.position += new Vector3(center.x - visibleCenter.x, center.y - visibleCenter.y, 0f);
+        destination = transform.position;
+    }
+
+
     private void SetupIdleVisual()
     {
         authoredWalkingSprite = spriteRenderer.sprite;
@@ -148,11 +198,17 @@ public sealed class PetWander : MonoBehaviour
         if (idleSprite == null) return;
         Bounds walk = LTCPetCollectionService.GetVisibleBounds(authoredWalkingSprite);
         Bounds idle = LTCPetCollectionService.GetVisibleBounds(idleSprite);
-        // Sitting front poses are tall while side-view cats/ferrets are long.
-        // Match the head, not the total bounding box, to avoid a sudden growth.
+        // Match the head between poses, then cap the idle pose to the same
+        // world-space size so a wide front sprite cannot cover nearby pets.
         float factor = LTCPetCollectionService.HasUnifiedSheet(PetId) || PetId == "rabbit" ? 1f : LTCPetCollectionService.GetHeadWidth(authoredWalkingSprite) /
             Mathf.Max(.01f, LTCPetCollectionService.GetHeadWidth(idleSprite));
-        idleScale = new Vector3(walkingScale.x * factor,walkingScale.y * factor,walkingScale.z);
+        Vector3 parentScale = spriteRenderer.transform.parent != null
+            ? spriteRenderer.transform.parent.lossyScale : Vector3.one;
+        float idleWorldSize = Mathf.Max(
+            idle.size.x * Mathf.Abs(parentScale.x * walkingScale.x),
+            idle.size.y * Mathf.Abs(parentScale.y * walkingScale.y));
+        factor = Mathf.Min(factor, targetHeight / Mathf.Max(.01f, idleWorldSize));
+        idleScale = new Vector3(walkingScale.x * factor, walkingScale.y * factor, walkingScale.z);
         idleOffset = walkingOffset;
         idleOffset.y += walk.min.y * walkingScale.y - idle.min.y * idleScale.y;
     }
@@ -160,8 +216,8 @@ public sealed class PetWander : MonoBehaviour
     // Animator updates after Update; apply the separate front pose afterwards.
     private void LateUpdate()
     {
-        if (spriteRenderer == null || idleSprite == null) return;
-        if (!isWalking)
+        if (spriteRenderer == null) return;
+        if (idleSprite != null && !isWalking)
         {
             spriteRenderer.sprite = idleSprite;
             spriteRenderer.flipX = false;
@@ -169,7 +225,28 @@ public sealed class PetWander : MonoBehaviour
             spriteRenderer.transform.localPosition = idleOffset;
             displayingIdle = true;
         }
+        ClampRenderedSize();
     }
+    private void ClampRenderedSize()
+    {
+        if (spriteRenderer.sprite == null) return;
+        Bounds visible = LTCPetCollectionService.GetVisibleBounds(spriteRenderer.sprite);
+        Vector3 worldScale = spriteRenderer.transform.lossyScale;
+        float worldSize = Mathf.Max(
+            visible.size.x * Mathf.Abs(worldScale.x),
+            visible.size.y * Mathf.Abs(worldScale.y));
+        if (worldSize <= targetHeight * 1.001f) return;
+
+        float factor = targetHeight / Mathf.Max(.01f, worldSize);
+        Vector3 scale = spriteRenderer.transform.localScale;
+        scale = new Vector3(scale.x * factor, scale.y * factor, scale.z);
+        spriteRenderer.transform.localScale = scale;
+        if (isWalking)
+            walkingScale = scale;
+        else
+            idleScale = scale;
+    }
+
 
     private void RestoreWalkingVisual()
     {
@@ -194,9 +271,9 @@ public sealed class PetWander : MonoBehaviour
 
     private void Update()
     {
-        if(PetCollectionBook.ModalOpen)return;
-        ResolvePetOverlap();
+        if (PetCollectionBook.ModalOpen) return;
         UpdateDepthSorting();
+
 
         if (!isWalking)
         {
@@ -206,18 +283,16 @@ public sealed class PetWander : MonoBehaviour
         }
 
         Vector3 beforeMove = transform.position;
-        Vector3 nextPosition = Vector3.MoveTowards(beforeMove, destination, walkSpeed * Time.deltaTime);
-        if (!CanMoveTo(nextPosition))
-        {
-            // Collision is a route change, not the end of a walk. Keep the
-            // walking animation and do not reset its frame or rest timer.
-            if (Time.time >= nextAvoidanceRetry)
-                RedirectAfterCollision(destination - beforeMove);
-            nextPosition = Vector3.MoveTowards(beforeMove, destination, walkSpeed * Time.deltaTime);
-            if (!CanMoveTo(nextPosition)) return; // Fully surrounded: never walk through a pet.
-        }
+        Vector2 heading = ((Vector2)(destination - beforeMove)).normalized;
+
+
+        float step = walkSpeed * Time.deltaTime;
+        Vector3 nextPosition = beforeMove + (Vector3)(heading * step);
+        nextPosition.x = Mathf.Clamp(nextPosition.x, walkMin.x, walkMax.x);
+        nextPosition.y = Mathf.Clamp(nextPosition.y, walkMin.y, walkMax.y);
         transform.position = nextPosition;
-        UpdateFacing(destination.x - beforeMove.x);
+        UpdateFacing(nextPosition.x - beforeMove.x);
+
         if (collectionFrames != null && collectionFrames.Length > 0 && Time.time >= nextCollectionFrame)
         {
             collectionFrame = (collectionFrame + 1) % collectionFrames.Length;
@@ -225,34 +300,23 @@ public sealed class PetWander : MonoBehaviour
             nextCollectionFrame = Time.time + .11f;
         }
 
-        if (Vector3.SqrMagnitude(transform.position - destination) <= 0.0025f)
+        if (Vector2.Distance(transform.position, destination) <= Mathf.Max(.08f, step * 1.5f))
             StartPause(true);
     }
 
     private void ChooseDestination()
     {
-        Vector3 candidate = transform.position;
-        for (int attempt = 0; attempt < 16; attempt++)
+        for (int attempt = 0; attempt < 24; attempt++)
         {
-            candidate = new Vector3(
+            Vector3 candidate = new Vector3(
                 Random.Range(walkMin.x, walkMax.x),
                 Random.Range(walkMin.y, walkMax.y),
                 transform.position.z);
-
-            if (Vector2.Distance(candidate, transform.position) >= 1f && CanTraverse(transform.position, candidate))
-            {
-                BeginWalk(candidate);
-                return;
-            }
-        }
-        // Random destinations can all be behind obstacles. Search headings
-        // instead of accepting the last unsafe random candidate.
-        if (!TryFindClearDirection(Vector2.right, out candidate))
-        {
-            resumeWalkingAt = Time.time + .2f;
+            if (Vector2.Distance(candidate, transform.position) < 1f) continue;
+            BeginWalk(candidate);
             return;
         }
-        BeginWalk(candidate);
+        resumeWalkingAt = Time.time + .1f;
     }
 
     private void BeginWalk(Vector3 candidate)
@@ -312,12 +376,8 @@ public sealed class PetWander : MonoBehaviour
 
     private bool CanTraverse(Vector3 start, Vector3 end)
     {
-        // Check the whole route, not just its destination. Short steps prevent
-        // choosing an endpoint on the other side of an intervening pet.
-        int steps = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(start, end) / .08f));
-        for (int i = 1; i <= steps; i++)
-            if (!CanMoveTo(Vector3.Lerp(start, end, (float)i / steps))) return false;
-        return true;
+        // Pets do not collide or block paths. Only avoid selecting an occupied destination.
+        return DestinationHasSpace(end);
     }
 
     private void StartPause(bool afterWalking)
@@ -343,72 +403,96 @@ public sealed class PetWander : MonoBehaviour
         resumeWalkingAt = Time.time + Random.Range(low, Mathf.Max(low, high));
     }
 
-    // Test the actual visible rectangles, not a fixed distance between root pivots.
-    // Includes vertical offsets from transparent padding and differently sized pets.
-    private bool CanMoveTo(Vector3 position)
+    private bool DestinationHasSpace(Vector3 position)
     {
-        if (spriteRenderer == null) return true;
-        Bounds mine = VisibleBounds();
-        mine.center += position - transform.position;
         for (int i = 0; i < ActivePets.Count; i++)
         {
             PetWander other = ActivePets[i];
-            if (other == null || other == this || !other.isActiveAndEnabled || other.spriteRenderer == null) continue;
-            Bounds theirs = other.VisibleBounds();
-            Vector2 delta = mine.center - theirs.center;
-            float xGap = (mine.size.x + theirs.size.x) * .5f + .08f;
-            float yGap = (mine.size.y + theirs.size.y) * .5f + .08f;
-            if (Mathf.Abs(delta.x) < xGap && Mathf.Abs(delta.y) < yGap) return false;
+            if (other == null || other == this || !other.isActiveAndEnabled) continue;
+            if (Vector2.Distance(position, other.transform.position) < separationRadius * 1.05f)
+                return false;
         }
         return true;
     }
 
-    private Bounds VisibleBounds()
+    private Vector2 CalculateSeparation(Vector3 position)
     {
-        Transform visual = spriteRenderer.transform;
-        Vector3 scale = visual.lossyScale;
-        Bounds bounds = LTCPetCollectionService.GetVisibleBounds(spriteRenderer.sprite);
-        return new Bounds(visual.TransformPoint(bounds.center),
-            Vector3.Scale(bounds.size, new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), 1f)));
-    }
-
-    private void ResolvePetOverlap()
-    {
-        Vector2 pushDirection = Vector2.zero;
+        Vector2 steering = Vector2.zero;
+        int myIndex = Mathf.Max(0, ActivePets.IndexOf(this));
+        Vector2 myCenter = CurrentVisualCenter() + ((Vector2)position - (Vector2)transform.position);
         for (int i = 0; i < ActivePets.Count; i++)
         {
             PetWander other = ActivePets[i];
-            if (other == null || other == this || !other.isActiveAndEnabled)
-                continue;
+            if (other == null || other == this || !other.isActiveAndEnabled) continue;
 
-            if (spriteRenderer == null || other.spriteRenderer == null) continue;
-            Bounds mine = VisibleBounds();
-            Bounds theirs = other.VisibleBounds();
-            Vector2 delta = mine.center - theirs.center;
-            float overlapX = (mine.size.x + theirs.size.x) * .5f + .08f - Mathf.Abs(delta.x);
-            float overlapY = (mine.size.y + theirs.size.y) * .5f + .08f - Mathf.Abs(delta.y);
-            if (overlapX <= 0f || overlapY <= 0f) continue;
-            float signX = Mathf.Abs(delta.x) > .001f ? Mathf.Sign(delta.x) : ActivePets.IndexOf(this) < i ? -1f : 1f;
-            float signY = Mathf.Abs(delta.y) > .001f ? Mathf.Sign(delta.y) : ActivePets.IndexOf(this) < i ? -1f : 1f;
-            // Separate along the shortest axis without changing Z or scale.
-            pushDirection += overlapX < overlapY ? new Vector2(signX * overlapX, 0f) : new Vector2(0f, signY * overlapY);
+            Vector2 delta = myCenter - other.CurrentVisualCenter();
+            float distance = delta.magnitude;
+            float safeDistance = Mathf.Max(.9f, (targetHeight + other.targetHeight) * .62f);
+            if (distance >= safeDistance) continue;
+            if (distance < .001f)
+                delta = (myIndex + i) % 2 == 0 ? Vector2.right : Vector2.left;
+            else
+                delta /= distance;
+            steering += delta * (1f - distance / safeDistance);
         }
+        return Vector2.ClampMagnitude(steering, 1f);
+    }
 
-        if (pushDirection.sqrMagnitude <= 0.000001f)
-            return;
+    private Vector2 CurrentVisualCenter()
+    {
+        if (spriteRenderer == null || spriteRenderer.sprite == null)
+            return transform.position;
+        Bounds visible = LTCPetCollectionService.GetVisibleBounds(spriteRenderer.sprite);
+        return spriteRenderer.transform.TransformPoint(visible.center);
+    }
 
-        Vector3 position = transform.position;
-        Vector3 rejectedDirection = destination - position;
-        Vector2 push = pushDirection;
-        position.x = Mathf.Clamp(position.x + push.x, walkMin.x, walkMax.x);
-        position.y = Mathf.Clamp(position.y + push.y, walkMin.y, walkMax.y);
-        transform.position = position;
+    private Bounds CurrentVisibleBounds()
+    {
+        if (spriteRenderer == null || spriteRenderer.sprite == null)
+            return new Bounds(transform.position, Vector3.zero);
+        Bounds local = LTCPetCollectionService.GetVisibleBounds(spriteRenderer.sprite);
+        Vector3 scale = spriteRenderer.transform.lossyScale;
+        return new Bounds(spriteRenderer.transform.TransformPoint(local.center),
+            Vector3.Scale(local.size, new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), 1f)));
+    }
 
-        // Keep walking, but replace the blocked route after separation.
-        if (isWalking)
+    private void ResolveVisualCrowding()
+    {
+        Bounds mine = CurrentVisibleBounds();
+        Vector2 correction = Vector2.zero;
+        int myIndex = Mathf.Max(0, ActivePets.IndexOf(this));
+        for (int i = 0; i < ActivePets.Count; i++)
         {
-            RedirectAfterCollision(rejectedDirection);
+            PetWander other = ActivePets[i];
+            if (other == null || other == this || !other.isActiveAndEnabled) continue;
+            Bounds theirs = other.CurrentVisibleBounds();
+            Vector2 delta = mine.center - theirs.center;
+            float overlapX = (mine.size.x + theirs.size.x) * .5f + .035f - Mathf.Abs(delta.x);
+            float overlapY = (mine.size.y + theirs.size.y) * .5f + .035f - Mathf.Abs(delta.y);
+            if (overlapX <= 0f || overlapY <= 0f) continue;
+
+            if (overlapX < overlapY)
+                correction.x += (Mathf.Abs(delta.x) > .001f ? Mathf.Sign(delta.x) : myIndex < i ? -1f : 1f) * overlapX;
+            else
+                correction.y += (Mathf.Abs(delta.y) > .001f ? Mathf.Sign(delta.y) : myIndex < i ? -1f : 1f) * overlapY;
         }
+
+        correction = Vector2.ClampMagnitude(correction, .28f);
+        if (correction.sqrMagnitude < .000001f) return;
+        Vector3 position = transform.position + (Vector3)correction;
+        position.x = Mathf.Clamp(position.x, walkMin.x, walkMax.x);
+        position.y = Mathf.Clamp(position.y, walkMin.y, walkMax.y);
+        transform.position = position;
+    }
+
+    private void ApplyGentleSeparation()
+    {
+        Vector2 steering = CalculateSeparation(transform.position);
+        if (steering.sqrMagnitude < .0001f) return;
+        Vector3 position = transform.position + (Vector3)(steering * separationSpeed * .52f * Time.deltaTime);
+        position.x = Mathf.Clamp(position.x, walkMin.x, walkMax.x);
+        position.y = Mathf.Clamp(position.y, walkMin.y, walkMax.y);
+        transform.position = position;
     }
 
     private void UpdateDepthSorting()
