@@ -75,7 +75,7 @@ public class Blockin : MonoBehaviour
         }
 
         PipeManager manager = Object.FindAnyObjectByType<PipeManager>();
-        if (manager == null || manager.isGameOver || manager.IsTutorialActive)
+        if (manager == null || manager.isGameOver || manager.IsTutorialActive || manager.IsLevelSelectionOpen)
         {
             return;
         }

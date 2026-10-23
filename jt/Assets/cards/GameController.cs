@@ -13,9 +13,26 @@ using UnityEngine.InputSystem;
 
 public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
 {
-    public bool IsAssessmentRunning => !battleEnded;
+    public CardLevelSelection levelSelection;
+    public CardLevelData levelToLoad;
+    public bool IsBattleEnded => battleEnded;
+    public const int SkillEnergyCost = 10;
+    public int SkillEnergy { get; private set; }
+    public bool IsSkillPlaying => skillPlaying;
+    public bool CanUseSkill => SkillEnergy >= SkillEnergyCost && gameFlowStarted && CanClickCards()
+        && revealedCards.Count == 0 && !skillPlaying;
+    private bool skillPlaying;
+    private CardSkillPresentation skillPresentation;
+    private SpriteRenderer enemyVisual;
+    private Vector3 enemyPosition;
+    private Quaternion enemyRotation;
+    private Vector3 enemyScale;
+    private Sprite enemyDefaultSprite;
+    private bool enemyDefaultFlip;
+    private int exactCardCount;
+    public bool IsAssessmentRunning => gameFlowStarted && !battleEnded;
     public void RestartCurrentItemAfterPause() { }
-    public void CancelCurrentAssessment() { battleEnded = true; isProcessing = true; StopAllCoroutines(); CognitiveAssessmentService.CancelGame(assessmentSessionId); assessmentSessionId = null; }
+    public void CancelCurrentAssessment() { battleEnded = true; isProcessing = true; StopAllCoroutines(); skillPlaying = false; if (skillPresentation != null) skillPresentation.CancelEffect(); CognitiveAssessmentService.CancelGame(assessmentSessionId); assessmentSessionId = null; }
 
     // --- 動畫與音效 ---
     [Header("Animations")]
@@ -91,6 +108,10 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
     private bool isProcessing;
     private bool battleEnded;
     private bool tutorialShowing;
+    private static bool tutorialShownThisSession;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetTeachingSession() => tutorialShownThisSession = false;
     private bool gameFlowStarted;
     private bool isTimingPlayerFlip;
     private bool assessmentCompleted;
@@ -155,21 +176,44 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
 
     private void Start()
     {
+        skillPresentation = GetComponent<CardSkillPresentation>();
+        if (skillPresentation == null) skillPresentation = gameObject.AddComponent<CardSkillPresentation>();
+        skillPresentation.Initialize(this);
         playerHealth = playerMaxHealth;
         enemyHealth = enemyMaxHealth;
         ResetBattleStats();
         CacheHealthBarSettings();
         SetupTeachingUI();
         UpdateBattleUI("遊戲開始！");
-        if (!tutorialShowing)
-        {
-            StartGameFlow();
-        }
+        CacheEnemyVisual();
+        if (levelSelection != null) levelSelection.Open();
+        else if (!TryShowTeachingOnce()) CloseTeachingUI();
     }
 
     private void Update()
     {
         HandleTeachingPointerInput();
+    }
+
+    private void LateUpdate()
+    {
+        PositionEnemyHealthBar();
+    }
+
+    private void PositionEnemyHealthBar()
+    {
+        if (enemyVisual == null || enemyHealthBarFill == null || enemyHealthBarFrame == null) return;
+        bool visible = enemyVisual.gameObject.activeInHierarchy;
+        enemyHealthBarFill.gameObject.SetActive(visible);
+        enemyHealthBarFrame.gameObject.SetActive(visible);
+        if (!visible) return;
+        Bounds bounds = enemyVisual.bounds;
+        Vector3 position = enemyHealthBarFrame.position;
+        position.x = bounds.center.x;
+        position.y = bounds.min.y - .28f;
+        enemyHealthBarFrame.position = position;
+        basePositions[enemyHealthBarFill] = position;
+        UpdateBar(enemyHealthBarFill, enemyHealth, enemyMaxHealth);
     }
 
     private void CacheHealthBarSettings()
@@ -234,7 +278,7 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
 
     private void BuildBoard()
     {
-        int total = columns * rows;
+        int total = exactCardCount > 0 ? exactCardCount : columns * rows;
         List<CardSetup> deck = new List<CardSetup>();
         if (cardFaces == null || cardFaces.Count == 0)
         {
@@ -256,7 +300,8 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
 
         for (int i = 0; i < deck.Count; i++)
         {
-            float startX = boardCenter.x - (columns - 1) * cardSpacing.x * 0.5f;
+            int rowColumns = Mathf.Min(columns, deck.Count - (i / columns) * columns);
+            float startX = boardCenter.x - (rowColumns - 1) * cardSpacing.x * 0.5f;
             float startY = boardCenter.y + (rows - 1) * cardSpacing.y * 0.5f;
             Vector3 pos = new Vector3(startX + (i % columns) * cardSpacing.x, startY - (i / columns) * cardSpacing.y, 0f);
             GameObject go = Instantiate(cardPrefab, pos, Quaternion.identity);
@@ -296,6 +341,7 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
             if (c1.GetRewardType() == CardRewardType.Heal) roundHealPoints += val; 
             else roundAttackPoints += val; 
             matchedPairCount++;
+            GainSkillEnergy();
             
             UpdateBattleUI("配對成功！繼續翻牌"); 
             
@@ -354,8 +400,9 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
         if (afterAnimationDelay > 0f)
             yield return new WaitForSeconds(afterAnimationDelay);
 
-        if (enemyHealth <= 0) 
-        { 
+        if (enemyHealth <= 0)
+        {
+            GainSkillEnergy();
             yield return StartCoroutine(HandleEnemyDeath());
             yield break; 
         }
@@ -375,27 +422,108 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
         if (afterAnimationDelay > 0f)
             yield return new WaitForSeconds(afterAnimationDelay);
 
+        GainSkillEnergy();
         if (playerHealth <= 0) { EndBattle(false); yield break; }
         yield return StartCoroutine(StartNewRound());
     }      
 
+    private void GainSkillEnergy()
+    {
+        SkillEnergy = Mathf.Min(SkillEnergyCost, SkillEnergy + 1);
+    }
+
+    public bool TryUseSkill()
+    {
+        if (!CanUseSkill) return false;
+        SkillEnergy -= SkillEnergyCost;
+        skillPlaying = true;
+        isProcessing = true;
+        isTimingPlayerFlip = false;
+        StartCoroutine(UseSkill());
+        return true;
+    }
+
+    private IEnumerator UseSkill()
+    {
+        UpdateBattleUI("空間斬！");
+        if (skillPresentation != null) yield return skillPresentation.PlayEffect();
+        if (battleEnded) yield break;
+        int damage = Mathf.Max(1, (int)(((long)enemyMaxHealth + 3) / 4));
+        int recovery = Mathf.Max(1, (int)(((long)playerMaxHealth * 3 + 9) / 10));
+        enemyHealth = Mathf.Max(0, enemyHealth - damage);
+        playerHealth = Mathf.Min(playerMaxHealth, playerHealth + recovery);
+        UpdateBattleUI($"空間斬！敵人 -{damage}  ／  回復 {recovery}");
+        if (enemyHealth <= 0)
+        {
+            yield return HandleEnemyDeath();
+            skillPlaying = false;
+            yield break;
+        }
+        yield return ShakeEnemy();
+        skillPlaying = false;
+        isProcessing = false;
+        StartPlayerFlipTimer();
+    }
+
+    private void OnDisable()
+    {
+        // Disabling a component alone does not stop its coroutines.
+        if (skillPlaying) CancelCurrentAssessment();
+        else if (skillPresentation != null) skillPresentation.CancelEffect();
+    }
+
     private IEnumerator HandleEnemyDeath()
     {
-        float deathDuration = PlayClipFromStart(enemyAnimator, enemyDieClip);
-        
+        if (enemyVisual != null)
+        {
+            Transform target = enemyVisual.transform;
+            Vector3 pivot = enemyVisual.bounds.center - new Vector3(0f, enemyVisual.bounds.extents.y, 0f);
+            float direction = enemyVisual.flipX ? 1f : -1f;
+            float elapsed = 0f, previousAngle = 0f;
+            while (elapsed < .45f)
+            {
+                elapsed += Time.deltaTime;
+                float angle = Mathf.SmoothStep(0f, 90f * direction, Mathf.Clamp01(elapsed / .45f));
+                target.RotateAround(pivot, Vector3.forward, angle - previousAngle);
+                previousAngle = angle;
+                yield return null;
+            }
+            yield return new WaitForSeconds(.15f);
+            elapsed = 0f;
+            while (elapsed < .25f)
+            {
+                elapsed += Time.deltaTime;
+                enemyVisual.color = new Color(1f, 1f, 1f, 1f - Mathf.Clamp01(elapsed / .25f));
+                yield return null;
+            }
+            enemyVisual.gameObject.SetActive(false);
+        }
         PlaySound(victorySound);
-        UpdateBattleUI("勝利！");
-
-        if (deathDuration > 0f)
-            yield return new WaitForSeconds(deathDuration);
-
-        if (keepEnemyDeadPose) FreezeClipAtEnd(enemyAnimator, enemyDieClip);
-        else StopClipPlayback(enemyAnimator);
-
-        if (deathEndDelay > 0f)
-            yield return new WaitForSeconds(deathEndDelay);
-
         EndBattle(true);
+    }
+
+    private IEnumerator ShakeEnemy(bool attacking = false)
+    {
+        if (enemyVisual == null) yield break;
+        Transform target = enemyVisual.transform;
+        Vector3 origin = target.position;
+        float direction = playerAnimator != null
+            ? Mathf.Sign(playerAnimator.transform.position.x - enemyVisual.bounds.center.x) : 1f;
+        float duration = attacking ? .4f : .25f;
+        float amplitude = attacking ? .24f : .10f;
+        float distance = attacking ? .7f : 0f;
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float progress = Mathf.Clamp01(elapsed / duration);
+            float envelope = Mathf.Sin(progress * Mathf.PI);
+            float lunge = distance * envelope;
+            float shake = Mathf.Sin(progress * Mathf.PI * 10f) * amplitude * envelope;
+            target.position = origin + Vector3.right * direction * (lunge + shake);
+            yield return null;
+        }
+        target.position = origin;
     }
 
     private IEnumerator PlayAttackAndHit(
@@ -405,8 +533,11 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
         AnimationClip hitClip,
         float hitDelay)
     {
-        float attackDuration = PlayClipFromStart(attacker, attackClip);
-        float delay = Mathf.Max(0f, hitDelay);
+        bool enemyAttacking = attacker == enemyAnimator;
+        float attackDuration;
+        if (enemyAttacking) { StartCoroutine(ShakeEnemy(true)); attackDuration = .4f; }
+        else attackDuration = PlayClipFromStart(attacker, attackClip);
+        float delay = enemyAttacking ? .16f : Mathf.Max(0f, hitDelay);
         if (attackDuration > 0f)
             delay = Mathf.Min(delay, attackDuration);
         else
@@ -415,7 +546,9 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
         if (delay > 0f)
             yield return new WaitForSeconds(delay);
 
-        float hitDuration = PlayClipFromStart(defender, hitClip);
+        float hitDuration;
+        if (defender == enemyAnimator) { StartCoroutine(ShakeEnemy()); hitDuration = .25f; }
+        else hitDuration = PlayClipFromStart(defender, hitClip);
         float remainingAttackTime = Mathf.Max(0f, attackDuration - delay);
         float remainingHitTime = hitDuration;
 
@@ -537,6 +670,9 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
 
     private void ResetBattleStats()
     {
+        SkillEnergy = 0;
+        skillPlaying = false;
+        if (skillPresentation != null) skillPresentation.CancelEffect();
         mismatchCount = 0;
         playerFlipCount = 0;
         trialIndex = 0;
@@ -626,6 +762,7 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
     {
         foreach (var c in allCards) if (c != null) Destroy(c.gameObject);
         allCards.Clear();
+        revealedCards.Clear();
     }
 
     private IEnumerator PreviewAllCards()
@@ -678,6 +815,70 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
         UpdateTeachingPage();
     }
 
+    private bool TryShowTeachingOnce()
+    {
+        if (!LTCGameSettings.TutorialsEnabled || tutorialShownThisSession || teachingStage == null) return false;
+        tutorialShownThisSession = true;
+        teachingStage.SetActive(true);
+        tutorialShowing = true;
+        isProcessing = true;
+        teachingPageIndex = 0;
+        FitTeachingLayout();
+        ShowBattleStatusText(false);
+        UpdateTeachingPage();
+        return true;
+    }
+
+    private void FitTeachingLayout()
+    {
+        Camera camera = Camera.main;
+        if (camera == null || !camera.orthographic || teachingStage == null) return;
+        float height = camera.orthographicSize * 2f;
+        float width = height * camera.aspect;
+        Vector3 center = new Vector3(camera.transform.position.x, camera.transform.position.y, teachingStage.transform.position.z);
+        var background = teachingStage.GetComponent<SpriteRenderer>();
+        if (background != null && background.sprite != null)
+        {
+            Vector3 bounds = background.bounds.size;
+            var scale = teachingStage.transform.localScale;
+            teachingStage.transform.localScale = new Vector3(scale.x * width * .92f / Mathf.Max(.01f, bounds.x),
+                scale.y * height * .92f / Mathf.Max(.01f, bounds.y), scale.z);
+            teachingStage.transform.position += center - background.bounds.center;
+        }
+        // Sprite examples use world units; keep them out of the text's overlay Canvas.
+        if (teachingPage1 != null) teachingPage1.transform.SetParent(teachingStage.transform, true);
+        if (teachingPage2 != null) teachingPage2.transform.SetParent(teachingStage.transform, true);
+        FitTeachingSprite(teachingPage1, center + Vector3.up * height * .09f, new Vector2(width * .46f, height * .46f));
+        FitTeachingSprite(teachingPage2, center + Vector3.up * height * .09f, new Vector2(width * .46f, height * .46f));
+        FitTeachingSprite(teachingCloseButton, center + new Vector3(width * .42f, -height * .4f), Vector2.one * .7f);
+        FitTeachingSprite(teachingPreviousButton, center + new Vector3(-.7f, -height * .4f), new Vector2(.8f, .65f));
+        FitTeachingSprite(teachingNextButton, center + new Vector3(.7f, -height * .4f), new Vector2(.8f, .65f));
+        if (teachingText != null)
+        {
+            RectTransform rect = teachingText.rectTransform;
+            rect.anchorMin = new Vector2(.16f, .18f);
+            rect.anchorMax = new Vector2(.84f, .34f);
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            teachingText.alignment = TextAlignmentOptions.Center;
+            teachingText.enableAutoSizing = true;
+            teachingText.fontSizeMin = 32;
+            teachingText.fontSizeMax = 40;
+        }
+    }
+
+    private static void FitTeachingSprite(GameObject target, Vector3 center, Vector2 box)
+    {
+        if (target == null) return;
+        var renderer = target.GetComponent<SpriteRenderer>();
+        if (renderer == null || renderer.sprite == null) return;
+        Vector3 size = renderer.sprite.bounds.size;
+        float scale = Mathf.Min(box.x / Mathf.Max(.01f, size.x), box.y / Mathf.Max(.01f, size.y));
+        Vector3 parentScale = target.transform.parent != null ? target.transform.parent.lossyScale : Vector3.one;
+        target.transform.localScale = new Vector3(scale / Mathf.Max(.01f, Mathf.Abs(parentScale.x)),
+            scale / Mathf.Max(.01f, Mathf.Abs(parentScale.y)), target.transform.localScale.z);
+        target.transform.position = center - target.transform.TransformVector(renderer.sprite.bounds.center);
+    }
+
     private void ShowNextTeachingPage()
     {
         if (CognitiveGamePauseMenu.IsGamePaused) return;
@@ -702,13 +903,12 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
 
         tutorialShowing = false;
         ShowBattleStatusText(true);
-
         StartGameFlow();
     }
 
     private void StartGameFlow()
     {
-        if (gameFlowStarted)
+        if (gameFlowStarted || tutorialShowing || (levelSelection != null && levelSelection.IsOpen))
         {
             return;
         }
@@ -716,6 +916,100 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
         gameFlowStarted = true;
         StartCardAssessment();
         StartCoroutine(StartNewRound());
+    }
+
+    private void CacheEnemyVisual()
+    {
+        if (enemyVisual != null || enemyAnimator == null) return;
+        enemyVisual = enemyAnimator.GetComponent<SpriteRenderer>();
+        if (enemyVisual == null) return;
+        enemyPosition = enemyVisual.transform.position;
+        enemyRotation = enemyVisual.transform.rotation;
+        enemyScale = enemyVisual.transform.localScale;
+        enemyDefaultSprite = enemyVisual.sprite;
+        enemyDefaultFlip = enemyVisual.flipX;
+    }
+
+    public void CloseTutorialForSelection()
+    {
+        if (teachingStage != null) teachingStage.SetActive(false);
+        tutorialShowing = false;
+        ShowBattleStatusText(false);
+        ClearBoard();
+    }
+
+    public void LoadLevel(CardLevelData level)
+    {
+        if (level == null) return;
+        CancelCurrentAssessment();
+        level.Validate();
+        levelToLoad = level;
+        ClearBoard();
+        foreach (var playback in activeClipPlaybacks.Values)
+            if (playback.graph.IsValid()) playback.graph.Destroy();
+        activeClipPlaybacks.Clear();
+        CacheEnemyVisual();
+        if (enemyVisual != null)
+        {
+            enemyAnimator.enabled = false;
+            enemyVisual.gameObject.SetActive(true);
+            enemyVisual.color = Color.white;
+            enemyVisual.transform.position = enemyPosition;
+            enemyVisual.transform.rotation = enemyRotation;
+            enemyVisual.sprite = level.enemySprite != null ? level.enemySprite : enemyDefaultSprite;
+            enemyVisual.flipX = level.enemySprite != null ? level.enemyFacesLeft : enemyDefaultFlip;
+            float size = level.enemyHeight / Mathf.Max(.01f, enemyVisual.sprite.bounds.size.y);
+            enemyVisual.transform.localScale = level.enemySprite != null ? new Vector3(size, size, 1f) : enemyScale;
+            // Align the visible feet, including sprites with different pivots and heights.
+            var playerVisual = playerAnimator != null ? playerAnimator.GetComponentInChildren<SpriteRenderer>() : null;
+            if (playerVisual != null)
+                enemyVisual.transform.position += Vector3.up * (playerVisual.bounds.min.y - enemyVisual.bounds.min.y);
+        }
+        exactCardCount = level.cardCount;
+        columns = level.columns;
+        Vector2 faceSize = cardBackBlue != null ? (Vector2)cardBackBlue.bounds.size : new Vector2(1.4f, 1.9f);
+        const float gap = .18f;
+        float boardWidth = 8.4f;
+        if (exactCardCount >= 16)
+        {
+            // Use the clear space between the reward legend and the skill HUD.
+            Camera camera = Camera.main;
+            boardWidth = camera != null && camera.orthographic
+                ? Mathf.Min(11.6f, camera.orthographicSize * 2f * camera.aspect * .52f) : 11.1f;
+            float bestScore = -1f;
+            for (int candidate = columns; candidate <= Mathf.Min(8, exactCardCount); candidate++)
+            {
+                int candidateRows = Mathf.CeilToInt(exactCardCount / (float)candidate);
+                float candidateScale = Mathf.Min(1.2f,
+                    boardWidth / (candidate * faceSize.x + (candidate - 1) * gap),
+                    7f / (candidateRows * faceSize.y + (candidateRows - 1) * gap));
+                float score = candidateScale - (candidate * candidateRows - exactCardCount) * .012f;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    columns = candidate;
+                }
+            }
+        }
+        rows = Mathf.CeilToInt(exactCardCount / (float)columns);
+        float scale = Mathf.Min(1.2f,
+            boardWidth / (columns * faceSize.x + (columns - 1) * gap),
+            7f / (rows * faceSize.y + (rows - 1) * gap));
+        cardSpacing = new Vector2((faceSize.x + gap) * scale, (faceSize.y + gap) * scale);
+        cardScale = new Vector3(scale, scale, 1f);
+        previewSeconds = level.previewSeconds;
+        playerMaxHealth = level.playerHealth;
+        enemyMaxHealth = level.enemyHealth;
+        enemyAttackPower = level.enemyAttack;
+        playerHealth = playerMaxHealth;
+        enemyHealth = enemyMaxHealth;
+        ResetBattleStats();
+        battleEnded = false;
+        isProcessing = false;
+        gameFlowStarted = false;
+        LTCReturnHomeButton.Hide();
+        UpdateBattleUI("遊戲開始！");
+        if (!TryShowTeachingOnce()) CloseTeachingUI();
     }
 
     private void StartCardAssessment()
@@ -740,7 +1034,7 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
             stepIndex = pairAttemptCount,
             eventKind = "response",
             randomSeed = randomSeed,
-            difficulty = rows * columns,
+            difficulty = (exactCardCount > 0 ? exactCardCount : rows * columns),
             stimulusCount = allCards.Count,
             condition = "card_pair_match",
             stimulus = firstCard.GetCardID() + "|" + secondCard.GetCardID(),
@@ -769,7 +1063,7 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
         if (teachingText != null)
         {
             teachingText.text = teachingPageIndex == 0
-                ? "每回合開始卡片會翻面5秒"
+                ? $"每回合開始卡片會翻面{previewSeconds:0.#}秒"
                 : "配對成功卡牌可以繼續直到失敗，藍色是攻擊，紅色是回血";
         }
     }
@@ -1017,7 +1311,9 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
         battleEnded = true;
         UpdateBattleUI(win ? "勝利！" : "戰敗...");
         CompleteCardAssessment(win);
-        LTCReturnHomeButton.Show();
+        if (levelSelection != null)
+            levelSelection.ShowCompletion(win, BuildStatusMessage(win ? "勝利！" : "戰敗..."));
+        else LTCReturnHomeButton.Show();
     }
 
     private void CompleteCardAssessment(bool win)
@@ -1032,7 +1328,7 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
             stepIndex = pairAttemptCount,
             eventKind = "summary",
             randomSeed = randomSeed,
-            difficulty = rows * columns,
+            difficulty = (exactCardCount > 0 ? exactCardCount : rows * columns),
             stimulusCount = allCards.Count,
             condition = "battle_result",
             stimulus = "matchedPairs=" + matchedPairCount + "|mismatches=" + mismatchCount,
@@ -1048,7 +1344,7 @@ public class GameController : MonoBehaviour, ICognitiveGamePauseTarget
             assessmentSessionId,
             CognitiveDomain.WorkingMemory,
             0f,
-            rows * columns);
+            (exactCardCount > 0 ? exactCardCount : rows * columns));
     }
 
     private struct CardSetup {

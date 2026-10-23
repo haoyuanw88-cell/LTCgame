@@ -1567,7 +1567,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.1, y: 0.76}
   m_AnchorMax: {x: 0.9, y: 0.92}
-  m_AnchoredPosition: {x: -11, y: -24}
+  m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &485714075
@@ -6655,7 +6655,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.09}
   m_AnchorMax: {x: 0.5, y: 0.09}
-  m_AnchoredPosition: {x: 119, y: 102}
+  m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 390, y: 112}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1805143184
@@ -7397,7 +7397,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.29}
   m_AnchorMax: {x: 0.5, y: 0.29}
-  m_AnchoredPosition: {x: -122, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 390, y: 112}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2069071536
@@ -7614,6 +7614,7 @@ MonoBehaviour:
   homeButton: {fileID: 1805143184}
   messageText: {fileID: 900116129}
   gameHomeScene: GameScene
+  resumeKeepsProgress: 0
 --- !u!1 &2107210039
 GameObject:
   m_ObjectHideFlags: 0

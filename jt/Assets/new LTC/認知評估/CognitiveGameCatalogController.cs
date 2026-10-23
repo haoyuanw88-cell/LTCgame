@@ -269,6 +269,8 @@ public class CognitiveGameCatalogController : MonoBehaviour
 
             BuildInterface();
         }
+        LTCGameSettingsPanel.Ensure(transform.Find(CanvasName));
+        LTCChallengeEntry.Ensure(transform.Find(CanvasName));
     }
 
 [ContextMenu("Rebuild Cognitive Catalog UI")]
@@ -319,6 +321,8 @@ public class CognitiveGameCatalogController : MonoBehaviour
         detailPage.SetActive(false);
         dailyLoginPopup.SetActive(false);
         onboardingPopup.SetActive(false);
+        LTCGameSettingsPanel.Ensure(canvasObject.transform);
+        LTCChallengeEntry.Ensure(canvasObject.transform);
     }
 
     private GameObject BuildFirstTimeOnboarding(Transform parent)
@@ -638,10 +642,10 @@ private void BuildStatisticsPage(Transform parent)
         SetRect(editProfile.GetComponent<RectTransform>(), new Vector2(0.69f, 0.55f), new Vector2(0.94f, 0.68f),
             Vector2.zero, Vector2.zero);
 
-        Button settings = CreateButton(panel.transform, "設定", "設定（開發中）", mutedColor);
+        Button settings = CreateButton(panel.transform, "設定", "設定", accentColor);
         SetRect(settings.GetComponent<RectTransform>(), new Vector2(0.69f, 0.39f), new Vector2(0.94f, 0.52f),
             Vector2.zero, Vector2.zero);
-        settings.interactable = false;
+        settings.interactable = true;
 
         Button dailyLogin = CreateCircleButton(panel.transform, "每日登入", orangeColor);
         SetRect(dailyLogin.GetComponent<RectTransform>(), new Vector2(0.72f, 0.05f), new Vector2(0.91f, 0.37f),
