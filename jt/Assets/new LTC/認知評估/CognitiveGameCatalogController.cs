@@ -982,12 +982,12 @@ private void BuildStatisticsPage(Transform parent)
     private void StartSelectedGame()
     {
         if (selectedGame != null && selectedGame.available && !string.IsNullOrWhiteSpace(selectedGame.sceneName))
-            SceneManager.LoadScene(selectedGame.sceneName);
+            LTC.Mobile.LTCSceneLoader.LoadScene(selectedGame.sceneName);
     }
 
     private void OpenShop()
     {
-        SceneManager.LoadScene("shop");
+        LTC.Mobile.LTCSceneLoader.LoadScene("shop");
     }
 
     private void SavePlayerName()

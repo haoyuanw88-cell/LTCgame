@@ -118,7 +118,7 @@ public static class LTCReturnHomeButton
     private static void ReturnHome()
     {
         Time.timeScale = 1f;
-        SceneManager.LoadScene(HomeSceneName);
+        LTC.Mobile.LTCSceneLoader.LoadScene(HomeSceneName);
     }
 
     private static Font CreateChineseFont()

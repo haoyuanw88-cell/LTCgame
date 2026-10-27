@@ -1472,7 +1472,7 @@ MonoBehaviour:
   - {fileID: 134340275}
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4281549343
+    rgba: 4279377728
   m_fontColor: {r: 0.25, g: 0.12, b: 0.07, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
@@ -1490,7 +1490,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 18
+  m_fontSize: 30
   m_fontSizeBase: 28
   m_fontWeight: 400
   m_enableAutoSizing: 1

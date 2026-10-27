@@ -5,6 +5,6 @@ public class GoShopScene : MonoBehaviour
 {
     public void GoToShop()
     {
-        SceneManager.LoadScene("shop");
+        LTC.Mobile.LTCSceneLoader.LoadScene("shop");
     }
 }

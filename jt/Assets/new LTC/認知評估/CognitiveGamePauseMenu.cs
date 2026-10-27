@@ -98,7 +98,7 @@ public sealed class CognitiveGamePauseMenu : MonoBehaviour
         IsGamePaused = false;
         pauseTarget?.CancelCurrentAssessment();
         isPaused = false;
-        SceneManager.LoadScene(gameHomeScene);
+        LTC.Mobile.LTCSceneLoader.LoadScene(gameHomeScene);
     }
 
     private void OnDisable()

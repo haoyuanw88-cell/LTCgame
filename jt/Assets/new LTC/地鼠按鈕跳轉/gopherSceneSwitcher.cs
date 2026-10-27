@@ -3,9 +3,9 @@ using UnityEngine.SceneManagement;
 
 public class gopherSceneSwitcher : MonoBehaviour
 {
-    // ª½±µ¦bµ{¦¡¤¤«ü©w¥Ø¼Ð³õ´º¦WºÙ¡A³o¸Ì¶ñ¤J 'gopher'
+    // ï¿½ï¿½ï¿½ï¿½ï¿½bï¿½{ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½wï¿½Ø¼Ð³ï¿½ï¿½ï¿½ï¿½Wï¿½Ù¡Aï¿½oï¿½Ì¶ï¿½J 'gopher'
     public void LoadGopherScene()
     {
-        SceneManager.LoadScene("gopher");
+        LTC.Mobile.LTCSceneLoader.LoadScene("gopher");
     }
 }

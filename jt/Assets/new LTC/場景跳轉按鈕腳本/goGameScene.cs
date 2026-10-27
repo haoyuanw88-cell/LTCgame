@@ -5,30 +5,30 @@ public class goGameScene : MonoBehaviour
 {
     public void GoToGopher()
     {
-        SceneManager.LoadScene("gopher");
+        LTC.Mobile.LTCSceneLoader.LoadScene("gopher");
     }
 
     public void GoToGameScene()
     {
-        SceneManager.LoadScene("GameScene");
+        LTC.Mobile.LTCSceneLoader.LoadScene("GameScene");
     }
     public void GoToshop()
     {
-        SceneManager.LoadScene("shop");
+        LTC.Mobile.LTCSceneLoader.LoadScene("shop");
     }
 
 public void GoToPetGarden()
     {
-        SceneManager.LoadScene("PetGarden");
+        LTC.Mobile.LTCSceneLoader.LoadScene("PetGarden");
     }
 
     public void GoToMb()
     {
-        SceneManager.LoadScene("mb");
+        LTC.Mobile.LTCSceneLoader.LoadScene("mb");
     }
     public void GoToApplication()
     {
-        SceneManager.LoadScene("application");
+        LTC.Mobile.LTCSceneLoader.LoadScene("application");
     }
 }
 

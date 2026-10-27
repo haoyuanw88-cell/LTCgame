@@ -170,7 +170,7 @@ public sealed class LTCGardenShopController : MonoBehaviour
 
         Button back = MakeButton(header.transform, "返回", "返回主選單", woodLight);
         SetRect(back.GetComponent<RectTransform>(), new Vector2(0.80f, 0.19f), new Vector2(0.95f, 0.81f));
-        back.onClick.AddListener(() => SceneManager.LoadScene("GameScene"));
+        back.onClick.AddListener(() => LTC.Mobile.LTCSceneLoader.LoadScene("GameScene"));
 
         GameObject sidebar = Panel(canvasObject.transform, "分類木牌", parchment);
         SetRect(sidebar.GetComponent<RectTransform>(), new Vector2(0.035f, 0.09f), new Vector2(0.19f, 0.81f));

@@ -208,7 +208,7 @@ public class LTCStatisticsPrototype : MonoBehaviour
             b.onClick.RemoveAllListeners(); b.onClick.AddListener(()=>{selectedGame=n;SelectTab(0);RequestCloud();});
         }
         for(int page=0;page<2;page++){int pg=page;var next=pages[page].transform.Find("NextGame")?.GetComponent<Button>();if(next){next.onClick.RemoveAllListeners();next.onClick.AddListener(()=>{selectedGame++;if(selectedGame>=8)selectedGame=pg==1?0:-1;RequestCloud();});}}
-        var refresh=transform.Find("StatisticsPrototype/RefreshCloud")?.GetComponent<Button>();if(refresh){refresh.onClick.RemoveAllListeners();refresh.onClick.AddListener(()=>{var service=identity as LTC.Identity.PlayerIdentityService;if(service!=null&&service.RequiresGoogleSignIn)UnityEngine.SceneManagement.SceneManager.LoadScene("LoginScene");else RequestCloud();});}
+        var refresh=transform.Find("StatisticsPrototype/RefreshCloud")?.GetComponent<Button>();if(refresh){refresh.onClick.RemoveAllListeners();refresh.onClick.AddListener(()=>{var service=identity as LTC.Identity.PlayerIdentityService;if(service!=null&&service.RequiresGoogleSignIn)LTC.Mobile.LTCSceneLoader.LoadScene("LoginScene");else RequestCloud();});}
         if(navigationButtons!=null){var names=new[]{"遊戲","統計","商店","寵物","我的"};for(int i=0;i<navigationButtons.Length;i++){string n=names[i];navigationButtons[i].onClick.RemoveAllListeners();navigationButtons[i].onClick.AddListener(()=>{var original=transform.parent.Find("底部導覽/"+n)?.GetComponent<Button>();if(original)original.onClick.Invoke();});}}
     }
     public void SelectTab(int index)

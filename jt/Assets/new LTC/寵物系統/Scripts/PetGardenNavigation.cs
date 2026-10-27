@@ -7,6 +7,6 @@ public sealed class PetGardenNavigation : MonoBehaviour
 
     public void ReturnToMainMenu()
     {
-        SceneManager.LoadScene(MainMenuSceneName);
+        LTC.Mobile.LTCSceneLoader.LoadScene(MainMenuSceneName);
     }
 }

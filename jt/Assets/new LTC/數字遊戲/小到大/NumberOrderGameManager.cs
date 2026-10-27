@@ -158,7 +158,7 @@ private void BindResultReturnButton()
 
     public void ReturnToMainMenu()
     {
-        SceneManager.LoadScene("GameScene");
+        LTC.Mobile.LTCSceneLoader.LoadScene("GameScene");
     }
 
 
