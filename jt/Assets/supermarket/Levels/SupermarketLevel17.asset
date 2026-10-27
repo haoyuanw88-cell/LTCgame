@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3e38229170c1f9449b1a1b428975b9ba, type: 3}
+  m_Name: SupermarketLevel17
+  m_EditorClassIdentifier: Assembly-CSharp::SupermarketLevelData
+  displayName: "\u5348\u9910\u63A1\u8CFC2"
+  panelHideDelay: 3
+  products:
+  - productImage: {fileID: 8285212119358573792, guid: cb0dd565e47250c4faddba3a66bf85e0, type: 3}
+    quantity: 3
+  - productImage: {fileID: -3569385763688046553, guid: 78c223460c4615844a57dce1a00f56c6, type: 3}
+    quantity: 4
+  - productImage: {fileID: -8849142255434820956, guid: 781abe859398b4e43941735291a64e5e, type: 3}
+    quantity: 5
+  - productImage: {fileID: 2313043236011815425, guid: a069785df3b1e514d950e87cd09eda4a, type: 3}
+    quantity: 3
+  - productImage: {fileID: 3049282371356043412, guid: 07ae0caee50297c4ca0b5d115c7fc817, type: 3}
+    quantity: 2

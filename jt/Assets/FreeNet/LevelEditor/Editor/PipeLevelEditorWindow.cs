@@ -16,11 +16,11 @@ public class PipeLevelEditorWindow : EditorWindow
 
     private const int GridButtonSize = 42;
     private const int PaletteButtonSize = 54;
-    private const string DefaultRotationLockSpritePath = "Assets/Grey/chain_shade3.png";
+    private const string DefaultRotationLockSpritePath = "Assets/FreeNet/Grey/chain_shade3.png";
     private const string DefaultRotationLockSpriteName = "chain_shade3_0";
-    private const string DefaultBlueEndpointTileSpritePath = "Assets/Grey/tileBlue_01.png";
+    private const string DefaultBlueEndpointTileSpritePath = "Assets/FreeNet/Grey/tileBlue_01.png";
     private const string DefaultBlueEndpointTileSpriteName = "tileBlue_01_0";
-    private const string DefaultRedEndpointTileSpritePath = "Assets/Grey/tileRed_01.png";
+    private const string DefaultRedEndpointTileSpritePath = "Assets/FreeNet/Grey/tileRed_01.png";
     private const string DefaultRedEndpointTileSpriteName = "tileRed_01_0";
 
     private PipeLevelData level;
@@ -103,6 +103,14 @@ public class PipeLevelEditorWindow : EditorWindow
             }
 
             EnsureLevelDefaultSprites();
+            EditorGUILayout.Space(6);
+            EditorGUILayout.HelpBox("完成後按「加入選關介面」，即可在水管遊戲中選取此關卡。內容修改會直接套用；順序可在 PipeLevelCatalog 的 Levels 調整。", MessageType.Info);
+            if (GUILayout.Button("加入選關介面", GUILayout.Height(30)))
+            {
+                MarkLevelDirty();
+                PipeLevelSelectionBaker.AddLevel(level);
+                ShowNotification(new GUIContent("已加入選關介面：" + level.name));
+            }
         }
     }
 
@@ -207,6 +215,57 @@ public class PipeLevelEditorWindow : EditorWindow
                 }
 
                 GUI.backgroundColor = originalColor;
+            }
+        }
+        DrawSelectedBrushPreview();
+    }
+
+    private void DrawSelectedBrushPreview()
+    {
+        EditorGUILayout.Space(4);
+        EditorGUILayout.LabelField("目前方向預覽", EditorStyles.boldLabel);
+        if (eraserMode)
+        {
+            EditorGUILayout.LabelField("橡皮擦模式：點選水管筆刷即可預覽方向。");
+            return;
+        }
+        if (selectedBrushIndex < 0 || selectedBrushIndex >= palette.brushes.Count || palette.brushes[selectedBrushIndex] == null)
+        {
+            EditorGUILayout.LabelField("請先選擇水管筆刷。");
+            return;
+        }
+
+        PipeLevelPiece piece = BuildPaintPiece(palette.brushes[selectedBrushIndex], 0, 0);
+        Sprite sprite = GetPiecePreviewSprite(piece);
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            Rect box = GUILayoutUtility.GetRect(100, 100, GUILayout.Width(100), GUILayout.Height(100));
+            GUI.Box(box, GUIContent.none, EditorStyles.helpBox);
+            if (sprite != null && Event.current.type == EventType.Repaint)
+            {
+                Texture preview = AssetPreview.GetAssetPreview(sprite);
+                if (preview == null)
+                {
+                    preview = AssetPreview.GetMiniThumbnail(sprite);
+                    Repaint();
+                }
+                if (preview != null)
+                {
+                    Matrix4x4 previousMatrix = GUI.matrix;
+                    try
+                    {
+                        // IMGUI's positive rotation is clockwise; world Z rotation is counterclockwise.
+                        GUIUtility.RotateAroundPivot(-piece.rotationZ, box.center);
+                        GUI.DrawTexture(new Rect(box.x + 8, box.y + 8, 84, 84), preview, ScaleMode.ScaleToFit, true);
+                    }
+                    finally { GUI.matrix = previousMatrix; }
+                }
+            }
+            using (new EditorGUILayout.VerticalScope())
+            {
+                EditorGUILayout.LabelField(piece.displayName);
+                EditorGUILayout.LabelField("旋轉角度：" + piece.rotationZ.ToString("0.#") + "°");
+                EditorGUILayout.LabelField("按 Rotate 旋轉，預覽會同步更新。");
             }
         }
     }
@@ -384,6 +443,13 @@ public class PipeLevelEditorWindow : EditorWindow
 
         Undo.RecordObject(level, "Paint Pipe Cell");
 
+        level.SetPiece(BuildPaintPiece(brush, x, y));
+        MarkLevelDirty();
+    }
+
+    // Use the same rotation, role and color rules for both preview and painting.
+    private PipeLevelPiece BuildPaintPiece(PipeBrush brush, int x, int y)
+    {
         PipeLevelPiece piece = new PipeLevelPiece();
         piece.CopyFromBrush(brush, x, y, rotationSteps);
         piece.redWaterSprite = ResolveRedWaterSprite(piece);
@@ -414,8 +480,7 @@ public class PipeLevelEditorWindow : EditorWindow
         piece.isRotationLocked = paintRotationLocked;
         piece.redWaterSprite = ResolveRedWaterSprite(piece);
 
-        level.SetPiece(piece);
-        MarkLevelDirty();
+        return piece;
     }
 
     private void EraseCell(int x, int y)

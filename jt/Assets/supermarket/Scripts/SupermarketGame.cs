@@ -19,7 +19,11 @@ public class ShoppingRequirement
 
 public class SupermarketGame : MonoBehaviour, ICognitiveGamePauseTarget
 {
-    public bool IsAssessmentRunning => !cleared;
+    public bool IsAssessmentRunning => gameStarted && !cleared;
+    public SupermarketLevelSelection levelSelection;
+    public SupermarketLevelData CurrentLevel { get; private set; }
+    public bool HasTutorial => tutorialPanel != null;
+    public bool IsTutorialOpen => tutorialPanel != null && tutorialPanel.activeSelf;
     public void RestartCurrentItemAfterPause() { }
     public void CancelCurrentAssessment() { cleared = true; gameStarted = false; StopAllCoroutines(); CognitiveAssessmentService.CancelGame(assessmentSessionId); assessmentSessionId = null; }
 
@@ -59,6 +63,7 @@ public class SupermarketGame : MonoBehaviour, ICognitiveGamePauseTarget
     private bool assessmentCompleted;
     private string assessmentSessionId;
     private GameObject tutorialPanel;
+    private bool tutorialCompleted;
     private SpriteRenderer panelRenderer;
     private GUIStyle listStyle;
     private GUIStyle resultStyle;
@@ -88,8 +93,44 @@ public class SupermarketGame : MonoBehaviour, ICognitiveGamePauseTarget
         AddClickTargets();
         StartMusic();
 
-        if (tutorialPanel == null)
+        if (!IsTutorialOpen && levelSelection == null)
             StartGame();
+    }
+
+    private void Start() { if (levelSelection != null) levelSelection.Open(); }
+    public List<Sprite> AvailableProducts()
+    {
+        var products = new List<Sprite>();
+        foreach (var sprite in FindObjectsByType<SpriteRenderer>())
+            if (IsPurchasable(sprite) && !products.Contains(sprite.sprite)) products.Add(sprite.sprite);
+        return products;
+    }
+    public bool IsPurchasable(SpriteRenderer sprite)
+    {
+        if (sprite == null || sprite.sprite == null || sprite.gameObject == gameObject || IsTutorialObject(sprite.gameObject)) return false;
+        string objectName = sprite.name.ToLowerInvariant();
+        return !IsDecoration(objectName) && !objectName.StartsWith("tile_") && !objectName.StartsWith("backtile_");
+    }
+    public void CloseTutorial() { if (tutorialPanel != null) tutorialPanel.SetActive(false); }
+    public bool LoadLevel(SupermarketLevelData level)
+    {
+        if (level == null) return false;
+        if (!level.ValidateProducts(AvailableProducts(), out string error)) { Debug.LogWarning(error); return false; }
+        CancelCurrentAssessment();
+        CurrentLevel = level;
+        requiredProducts = level.CreateRequirements();
+        panelHideDelay = Mathf.Max(.5f, level.panelHideDelay);
+        failures = 0; clearTime = 0; cleared = false;
+        currentPanelYOffset = targetPanelYOffset = 0;
+        nextPanelHideTime = float.PositiveInfinity;
+        if (gameCamera != null)
+        {
+            var position = gameCamera.transform.position; position.x = checkoutCameraX;
+            gameCamera.transform.position = position;
+        }
+        LTCReturnHomeButton.Hide();
+        if (tutorialPanel != null) tutorialPanel.SetActive(LTCGameSettings.TutorialsEnabled && !tutorialCompleted);
+        return true;
     }
 
     private void Update()
@@ -115,10 +156,12 @@ public class SupermarketGame : MonoBehaviour, ICognitiveGamePauseTarget
 
     public void StartGame()
     {
+        if (levelSelection != null && levelSelection.IsOpen) return;
         if (CognitiveGamePauseMenu.IsGamePaused) return;
         if (gameStarted)
             return;
 
+        if (IsTutorialOpen) tutorialCompleted = true;
         gameStarted = true;
         startTime = Time.time;
         randomSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
@@ -152,7 +195,7 @@ public class SupermarketGame : MonoBehaviour, ICognitiveGamePauseTarget
         if (tutorialPanel == null)
             return;
 
-        tutorialPanel.SetActive(true);
+        tutorialPanel.SetActive(LTCGameSettings.TutorialsEnabled);
         gameStarted = false;
         targetPanelYOffset = 0f;
         currentPanelYOffset = 0f;
@@ -218,8 +261,31 @@ public class SupermarketGame : MonoBehaviour, ICognitiveGamePauseTarget
         if (!gameStarted || gameCamera == null || cleared)
             return;
 
+        // Each supermarket background represents a shopping area. Copied areas
+        // remain navigable without hard-coding a fixed number of pages.
+        var backgrounds = new List<SpriteRenderer>();
+        float rightmostCenter = float.NegativeInfinity;
+        foreach (var sprite in FindObjectsByType<SpriteRenderer>())
+        {
+            if (!sprite.name.ToLowerInvariant().StartsWith("background") || sprite.sprite == null) continue;
+            backgrounds.Add(sprite);
+            rightmostCenter = Mathf.Max(rightmostCenter, sprite.bounds.center.x);
+        }
         Vector3 position = gameCamera.transform.position;
-        position.x = goToProductArea ? productAreaCameraX : checkoutCameraX;
+        float nextX = position.x;
+        float nearestDistance = float.PositiveInfinity;
+        foreach (var background in backgrounds)
+        {
+            float candidate = checkoutCameraX + background.bounds.center.x - rightmostCenter;
+            float distance = candidate - position.x;
+            if ((goToProductArea ? distance < -.1f : distance > .1f) && Mathf.Abs(distance) < nearestDistance)
+            {
+                nextX = candidate;
+                nearestDistance = Mathf.Abs(distance);
+            }
+        }
+        if (backgrounds.Count < 2) nextX = goToProductArea ? productAreaCameraX : checkoutCameraX;
+        position.x = nextX;
         gameCamera.transform.position = position;
     }
 
@@ -258,7 +324,8 @@ public class SupermarketGame : MonoBehaviour, ICognitiveGamePauseTarget
             cleared = true;
             clearTime = Time.time - startTime;
             CompleteAssessment();
-            LTCReturnHomeButton.Show();
+            if (levelSelection != null) levelSelection.ShowCompletion(clearTime, failures);
+            else LTCReturnHomeButton.Show();
         }
     }
 
@@ -352,17 +419,17 @@ public class SupermarketGame : MonoBehaviour, ICognitiveGamePauseTarget
             if (target == gameObject || IsTutorialObject(target))
                 continue;
 
-            if (objectName == "tile_0185_0" || objectName == "tile_0186_0")
+            if (sprite.sprite != null && (sprite.sprite.name == "tile_0185_0" || sprite.sprite.name == "tile_0186_0"))
             {
                 EnsureCollider(target);
                 CameraArrow arrow = target.GetComponent<CameraArrow>();
                 if (arrow == null)
                     arrow = target.AddComponent<CameraArrow>();
-                arrow.Setup(this, objectName == "tile_0185_0");
+                arrow.Setup(this, sprite.sprite.name == "tile_0185_0");
                 continue;
             }
 
-            if (IsDecoration(objectName))
+            if (!IsPurchasable(sprite))
                 continue;
 
             EnsureCollider(target);
@@ -415,7 +482,7 @@ public class SupermarketGame : MonoBehaviour, ICognitiveGamePauseTarget
         CreateStyles();
         DrawShoppingList();
 
-        if (cleared)
+        if (cleared && levelSelection == null)
         {
             Rect box = new Rect(Screen.width * 0.25f, Screen.height * 0.32f,
                 Screen.width * 0.5f, Screen.height * 0.28f);
@@ -587,10 +654,39 @@ public class CameraArrow : MonoBehaviour
     private SupermarketGame game;
     private bool goToProductArea;
 
+    private float areaCameraX;
+    private SpriteRenderer arrowRenderer;
+
     public void Setup(SupermarketGame owner, bool goToProducts)
     {
         game = owner;
         goToProductArea = goToProducts;
+        arrowRenderer = GetComponent<SpriteRenderer>();
+        float nearest = float.PositiveInfinity;
+        float rightmost = float.NegativeInfinity;
+        float areaCenter = owner.checkoutCameraX;
+        foreach (var background in FindObjectsByType<SpriteRenderer>())
+        {
+            if (!background.name.ToLowerInvariant().StartsWith("background") || background.sprite == null) continue;
+            float center = background.bounds.center.x;
+            rightmost = Mathf.Max(rightmost, center);
+            float distance = Mathf.Abs(center - transform.position.x);
+            if (distance < nearest) { nearest = distance; areaCenter = center; }
+        }
+        areaCameraX = float.IsNegativeInfinity(rightmost) ? areaCenter : owner.checkoutCameraX + areaCenter - rightmost;
+        LateUpdate();
+    }
+
+    private void LateUpdate()
+    {
+        if (game == null || game.gameCamera == null || !game.gameCamera.orthographic || arrowRenderer == null) return;
+        // Keep the complete arrow inside its area's camera view at every aspect ratio.
+        float halfWidth = game.gameCamera.orthographicSize * game.gameCamera.aspect;
+        float inset = arrowRenderer.bounds.extents.x + .5f;
+        Vector3 position = transform.position;
+        position.x = areaCameraX + (goToProductArea ? -1f : 1f) * Mathf.Max(0f, halfWidth - inset);
+        position.y = game.gameCamera.transform.position.y;
+        transform.position = position;
     }
 
     private void OnMouseDown()

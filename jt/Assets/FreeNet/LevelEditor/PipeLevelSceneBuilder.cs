@@ -53,6 +53,9 @@ public static class PipeLevelSceneBuilder
                 continue;
             }
 
+            // Destroy is deferred during play; exclude old pipes from cache queries immediately.
+            pipe.gameObject.SetActive(false);
+            if (Application.isPlaying) pipe.transform.SetParent(null);
             DestroyObject(pipe.gameObject);
         }
     }

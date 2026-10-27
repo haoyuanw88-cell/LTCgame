@@ -26,6 +26,8 @@ public class PipeManager : MonoBehaviour, ICognitiveGamePauseTarget
     public bool clearScenePipesWhenLoading = true;
     public Transform levelRoot;
     public AudioClip defaultPipeRotateSound;
+    public PipeLevelSelection levelSelection;
+    public bool IsLevelSelectionOpen => levelSelection != null && levelSelection.IsOpen;
 
     [Header("終點提示設定")]
     public bool showEndpointHintOnStart = true;
@@ -62,11 +64,18 @@ public class PipeManager : MonoBehaviour, ICognitiveGamePauseTarget
     private int trialIndex;
     private int randomSeed;
     private bool tutorialActive;
+    private static bool tutorialShownThisSession;
     private bool endpointHintPendingAfterTutorial;
     private bool assessmentCompleted;
     private string assessmentSessionId;
 
     public bool IsTutorialActive => tutorialActive;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetTutorialSession()
+    {
+        tutorialShownThisSession = false;
+    }
 
     void Start()
     {
@@ -84,6 +93,11 @@ public class PipeManager : MonoBehaviour, ICognitiveGamePauseTarget
         UpdateTimerUI();
 
         SetupTutorial();
+        if (levelSelection != null)
+        {
+            levelSelection.Open();
+            return;
+        }
         if (showTutorialOnStart)
         {
             ShowTutorial();
@@ -109,6 +123,8 @@ public class PipeManager : MonoBehaviour, ICognitiveGamePauseTarget
             return;
         }
 
+        CancelCurrentAssessment();
+        LTCReturnHomeButton.Hide();
         levelToLoad = newLevel;
         ResetRunState();
         BuildLevelObjects(newLevel);
@@ -163,6 +179,7 @@ public class PipeManager : MonoBehaviour, ICognitiveGamePauseTarget
         
         foreach (var p in pipes)
         {
+            if (!p.gameObject.activeInHierarchy) continue;
             if (p.x >= 0 && p.x < width && p.y >= 0 && p.y < height)
             {
                 allPipes[p.x, p.y] = p;
@@ -244,7 +261,7 @@ public class PipeManager : MonoBehaviour, ICognitiveGamePauseTarget
 
     void Update()
     {
-        if (CognitiveGamePauseMenu.IsGamePaused) return;
+        if (CognitiveGamePauseMenu.IsGamePaused || IsLevelSelectionOpen) return;
         HandleTutorialInput();
 
         // 如果遊戲還沒結束，就持續累加時間
@@ -425,15 +442,19 @@ public class PipeManager : MonoBehaviour, ICognitiveGamePauseTarget
             int seconds = Mathf.FloorToInt(elapsedTime % 60f);
             string timeStr = string.Format("{0:00}:{1:00}", minutes, seconds);
             
-            winResultText.text = $"過關！\nMOVES: {moveCount}\nTIME: {timeStr}";
+            winResultText.text = levelSelection != null
+                ? $"步數：{moveCount}\n時間：{timeStr}"
+                : $"過關！\nMOVES: {moveCount}\nTIME: {timeStr}";
         }
 
         if (winUI != null) {
             winUI.SetActive(true);
-            StartCoroutine(PopUpEffect(winUI.transform));
+            if (levelSelection != null) winUI.transform.localScale = Vector3.one;
+            else StartCoroutine(PopUpEffect(winUI.transform));
         }
 
-        LTCReturnHomeButton.Show();
+        if (levelSelection != null) levelSelection.ShowCompletion();
+        else LTCReturnHomeButton.Show();
     }
 
     private void CompleteAssessment()
@@ -570,6 +591,11 @@ public class PipeManager : MonoBehaviour, ICognitiveGamePauseTarget
 
     private void ShowTutorial()
     {
+        if (!LTCGameSettings.TutorialsEnabled || tutorialShownThisSession)
+        {
+            CloseTutorial();
+            return;
+        }
         if (tutorialBackground == null && tutorialFirstPage == null && tutorialSecondPage == null)
         {
             tutorialActive = false;
@@ -577,8 +603,34 @@ public class PipeManager : MonoBehaviour, ICognitiveGamePauseTarget
             return;
         }
 
+        tutorialShownThisSession = true;
         tutorialActive = true;
         SetTutorialPage(0);
+        CenterTutorial();
+    }
+
+    private void LateUpdate()
+    {
+        if (tutorialActive) CenterTutorial();
+    }
+
+    // The tutorial uses world-space sprites; follow the camera fitted to each board.
+    public void CenterTutorial()
+    {
+        if (!tutorialActive || tutorialBackground == null) return;
+        Camera camera = Camera.main;
+        SpriteRenderer background = tutorialBackground.GetComponent<SpriteRenderer>();
+        if (camera == null || !camera.orthographic || background == null) return;
+        Vector3 size = background.bounds.size;
+        float viewportHeight = camera.orthographicSize * 2f;
+        float factor = Mathf.Min(viewportHeight * camera.aspect * .84f / Mathf.Max(.01f, size.x),
+            viewportHeight * .78f / Mathf.Max(.01f, size.y));
+        Vector3 scale = tutorialBackground.transform.localScale;
+        tutorialBackground.transform.localScale = new Vector3(scale.x * factor, scale.y * factor, scale.z);
+        Vector3 position = tutorialBackground.transform.position;
+        position.x += camera.transform.position.x - background.bounds.center.x;
+        position.y += camera.transform.position.y - background.bounds.center.y;
+        tutorialBackground.transform.position = position;
     }
 
     public void ShowPreviousTutorialPage()

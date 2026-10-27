@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b9d6645241f5b94392250f0e5636145, type: 3}
+  m_Name: CardLevel9
+  m_EditorClassIdentifier: Assembly-CSharp::CardLevelData
+  displayName: "\u7B2C 9 \u95DC"
+  cardCount: 14
+  columns: 4
+  previewSeconds: 5
+  playerHealth: 25
+  enemyName: image (97)_2
+  enemySprite: {fileID: -7705593382716584959, guid: 0d7cff8d682e7c24e937a59a3065a67e, type: 3}
+  enemyHealth: 30
+  enemyAttack: 5
+  enemyHeight: 3
+  enemyFacesLeft: 1
