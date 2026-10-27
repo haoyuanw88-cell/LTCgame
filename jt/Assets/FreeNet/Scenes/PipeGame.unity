@@ -15449,7 +15449,7 @@ MonoBehaviour:
   loadLevelOnStart: 0
   clearScenePipesWhenLoading: 1
   levelRoot: {fileID: 0}
-  defaultPipeRotateSound: {fileID: 0}
+  defaultPipeRotateSound: {fileID: 8300000, guid: 3ad8e98f4a87dd24e9ae1b25abf7dff8, type: 3}
   levelSelection: {fileID: 1921217606}
   showEndpointHintOnStart: 1
   endpointHintObjectName: GUI_2
