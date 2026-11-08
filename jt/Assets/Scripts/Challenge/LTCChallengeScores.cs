@@ -1,7 +1,7 @@
 using UnityEngine;
 using LTC.Identity;
 
-/// <summary>Only the personal best is stored locally; no assessment or upload is performed.</summary>
+/// <summary>Stores the personal best for the local challenge display.</summary>
 public static class LTCChallengeScores
 {
     public static string CurrentPlayerKey => PlayerIdentityService.Current.StableLocalPlayerKey;

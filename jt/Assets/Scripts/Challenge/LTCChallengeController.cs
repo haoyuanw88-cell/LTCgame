@@ -24,7 +24,7 @@ public sealed class LTCChallengeController : MonoBehaviour
     AudioSource music;
     readonly Queue<LTCChallengeKind> bag = new Queue<LTCChallengeKind>();
     int lastKind = -1, lastEnemy = -1;
-    string runPlayerKey;
+    string runPlayerKey, runOwner, runApiBaseUrl;
 
     void Start()
     {
@@ -71,7 +71,7 @@ public sealed class LTCChallengeController : MonoBehaviour
         progress=ui.Text(timeBar,"完成關數","完成 0 關",22,.01f,.02f,.25f,.98f);
         roundViewport=ui.Panel(root,"關卡滑動區",Color.clear,.05f,.055f,.95f,.565f,false);
         roundViewport.gameObject.AddComponent<RectMask2D>();
-        ui.Text(root,"模式說明","挑戰最高分僅儲存在本機，不列入認知紀錄",20,.12f,.005f,.88f,.05f);
+        ui.Text(root,"模式說明","挑戰紀錄獨立同步至雲端",20,.12f,.005f,.88f,.05f);
         intro=Overlay("開始挑戰", "認知遊戲 RUSH", "每關 10 秒，完成即攻擊敵人 1 點。\n失敗扣 1 點生命，3 點生命用完即結束。\n連續成功：倍率每關 +0.5，最高 ×5.0。\n攻擊 50 分，擊倒再加 100 分，皆乘目前倍率。\n卡牌先記憶、翻面，再開始倒數。", "開始挑戰", StartRun);
         pause=Overlay("暫停畫面","挑戰暫停","倒數與記憶展示已暫停。\n繼續後保留目前關卡與分數。","繼續挑戰",()=>SetPaused(false));
         pause.SetActive(false);
@@ -95,6 +95,9 @@ public sealed class LTCChallengeController : MonoBehaviour
         if(results!=null){results.SetActive(false);Destroy(results);}
         intro.SetActive(false);pause.SetActive(false);IsPaused=false;IsTransitioning=false;
         runPlayerKey=LTCChallengeScores.CurrentPlayerKey;
+        LTCChallengeCloud.CaptureLegacyBest(runPlayerKey);
+        runOwner=LTCChallengeCloud.CurrentOwner();
+        runApiBaseUrl=LTCChallengeCloud.ApiBaseUrl;
         Run=new LTCChallengeRun(UnityEngine.Random.Range(1,int.MaxValue)); bag.Clear();lastKind=-1;
         HasStarted=true; SelectEnemy();feedback.text="完成關卡，攻擊敵人！";
         CreateRound(NextKind()); RefreshHUD();
@@ -154,6 +157,7 @@ public sealed class LTCChallengeController : MonoBehaviour
         if(IsTransitioning||IsPaused||Run==null||Run.IsOver)return;
         if(!Run.Resolve(success))return;
         LTCChallengeScores.Record(Run.Score,runPlayerKey);
+        if(Run.IsOver)LTCChallengeCloud.Enqueue(runApiBaseUrl,runOwner,Run.Score);
         IsTransitioning=true;CurrentRound.IsPaused=true;
         feedback.text=success?"攻擊！\n+"+Run.LastAward+" 分": "受到攻擊\n倍率重設";
         if(success&&Run.NeedsEnemy)feedback.text="擊倒！\n+"+Run.LastAward+" 分";
@@ -222,7 +226,7 @@ public sealed class LTCChallengeController : MonoBehaviour
         ui.Text(card,"完成關卡","完成關卡　"+Run.Cleared,38,.08f,.42f,.92f,.54f);
         ui.Text(card,"擊倒敵人","擊倒敵人　"+Run.Defeated,38,.08f,.30f,.52f,.43f);
         ui.Text(card,"最高倍率","最高倍率　×"+Run.BestMultiplier.ToString("0.0"),38,.50f,.30f,.94f,.43f);
-        ui.Text(card,"本機紀錄說明","最高分儲存於本機，不會寫入資料庫。",26,.06f,.20f,.94f,.29f);
+        ui.Text(card,"本機紀錄說明","本次分數會同步至挑戰模式紀錄。",26,.06f,.20f,.94f,.29f);
         var retry=ui.Button(card,"主要按鈕","再挑戰一次",ui.Sage,.10f,.055f,.55f,.19f,StartRun);
         var home=ui.Button(card,"返回首頁","返回首頁",ui.Blue,.60f,.055f,.90f,.19f,ReturnHome);
         foreach(var button in new[]{retry,home})button.GetComponentInChildren<TMP_Text>().fontSize=36;
