@@ -51568,7 +51568,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CognitiveGameCatalogController
   enableFirstTimeOnboarding: 1
-  forceShowOnboardingForTesting: 1
+  forceShowOnboardingForTesting: 0
   chineseFont: {fileID: 11400000, guid: 503a6c26930172f49bd89d54dbe162e9, type: 2}
   avatarSprite: {fileID: 21300000, guid: 802db7708ca518e41ab4f580844f9eeb, type: 3}
   coinPanelSprite: {fileID: 21300000, guid: 750181ad2ab415a498beb2f1982f8e1e, type: 3}

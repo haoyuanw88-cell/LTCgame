@@ -22,7 +22,7 @@ public class CognitiveGameCatalogController : MonoBehaviour
     [Tooltip("關閉後完全不顯示首次登入 NPC。")]
     [SerializeField] private bool enableFirstTimeOnboarding = true;
     [Tooltip("測試用：即使已填過資料，每次進入 GameScene 仍顯示。正式版請關閉。")]
-    [SerializeField] private bool forceShowOnboardingForTesting = true;
+    [SerializeField] private bool forceShowOnboardingForTesting = false;
 
     [Header("Chinese UI")]
     [SerializeField] private TMP_FontAsset chineseFont;
@@ -851,6 +851,7 @@ private void BuildStatisticsPage(Transform parent)
             ChartSelection.ProcessingSpeed);
         BindStatisticsFilter(statisticsPage.transform.Find("篩選_執行功能")?.GetComponent<Button>(),
             ChartSelection.Executive);
+        LTCWarmUi.StyleCatalog(root, OpenOnboarding);
         RefreshUserData();
         if (ShouldShowOnboarding()) OpenOnboarding();
         else if (!HasClaimedDailyLoginToday()) OpenDailyLoginPopup();
@@ -859,7 +860,7 @@ private void BuildStatisticsPage(Transform parent)
     private bool ShouldShowOnboarding()
     {
         return enableFirstTimeOnboarding && !onboardingShownThisRun &&
-               (forceShowOnboardingForTesting || PlayerPrefs.GetInt(OnboardingCompletedKey, 0) == 0);
+               PlayerPrefs.GetInt(OnboardingCompletedKey, 0) == 0;
     }
 
     private void OpenOnboarding()
@@ -924,8 +925,9 @@ private void BuildStatisticsPage(Transform parent)
         PlayerPrefs.SetString("LTC_ProfileEducation", educationCode);
         PlayerPrefs.SetInt(OnboardingCompletedKey, 1);
         PlayerPrefs.Save();
-        LTC.Identity.PlayerIdentityService.SyncCurrentProfile();
         CloseOnboarding();
+        RefreshUserData();
+        LTC.Identity.PlayerIdentityService.SyncCurrentProfile();
     }
 
     private void ShowOnboardingError(string message)
@@ -938,7 +940,6 @@ private void BuildStatisticsPage(Transform parent)
     private void CloseOnboarding()
     {
         if (onboardingPopup != null) onboardingPopup.SetActive(false);
-        if (!HasClaimedDailyLoginToday()) OpenDailyLoginPopup();
     }
 
     [ContextMenu("Reset First-Time Onboarding")]

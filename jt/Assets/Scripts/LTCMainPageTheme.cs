@@ -109,6 +109,8 @@ public sealed class LTCMainPageTheme : MonoBehaviour
     void OnDestroy(){if(identity!=null)identity.IdentityChanged-=RefreshIdentity;}
     void StyleHeaderActions()
     {
+        if (games != null && games.Find("玩家資訊列/編輯資料") != null)
+            Place(games.Find("玩家資訊列/玩家名稱"),.14f,.15f,.28f,.85f);
         var b=games.Find("玩家資訊列/每日任務與成就");if(!b)return;
         Place(b,.43f,.16f,.68f,.84f);
         var coin=games.Find("玩家資訊列/金幣區")?.GetComponent<Image>();

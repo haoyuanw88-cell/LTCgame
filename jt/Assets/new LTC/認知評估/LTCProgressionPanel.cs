@@ -11,15 +11,17 @@ using UnityEngine.UI;
 public sealed class LTCProgressionPanel : MonoBehaviour
 {
     const string CatalogSceneName = "GameScene";
-    readonly Color green = new Color(0.29f, 0.63f, 0.49f, 1f);
-    readonly Color orange = new Color(0.94f, 0.57f, 0.25f, 1f);
-    readonly Color cream = new Color(1f, 0.995f, 0.975f, 1f);
+    readonly Color green = LTCWarmUi.Sage;
+    readonly Color orange = LTCWarmUi.Peach;
+    readonly Color cream = LTCWarmUi.Paper;
     TMP_FontAsset font;
     GameObject overlay;
     RectTransform content;
     TMP_Text title;
     TMP_Text summary;
     bool showAchievements;
+    Button dailyTab;
+    Button achievementTab;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Initialize()
@@ -88,7 +90,7 @@ public sealed class LTCProgressionPanel : MonoBehaviour
         SetRect(title.rectTransform, new Vector2(0.06f, 0.86f), new Vector2(0.55f, 0.96f));
 
         summary = Text(card.transform, "摘要", "", 21, FontStyles.Bold, TextAlignmentOptions.Right);
-        summary.color = green;
+        summary.color = LTCWarmUi.Ink;
         SetRect(summary.rectTransform, new Vector2(0.52f, 0.87f), new Vector2(0.80f, 0.95f));
 
         Button close = Button(card.transform, "關閉", "關閉", new Color(0.58f, 0.59f, 0.55f, 1f));
@@ -96,9 +98,11 @@ public sealed class LTCProgressionPanel : MonoBehaviour
         close.onClick.AddListener(() => overlay.SetActive(false));
 
         Button daily = Button(card.transform, "每日任務分頁", "每日任務", orange);
+        dailyTab = daily;
         SetRect(daily.GetComponent<RectTransform>(), new Vector2(0.06f, 0.76f), new Vector2(0.28f, 0.84f));
         daily.onClick.AddListener(() => { showAchievements = false; Refresh(); });
         Button achievement = Button(card.transform, "成就分頁", "遊戲成就", green);
+        achievementTab = achievement;
         SetRect(achievement.GetComponent<RectTransform>(), new Vector2(0.30f, 0.76f), new Vector2(0.52f, 0.84f));
         achievement.onClick.AddListener(() => { showAchievements = true; Refresh(); });
 
@@ -156,6 +160,8 @@ public sealed class LTCProgressionPanel : MonoBehaviour
         title.text = showAchievements ? "遊戲成就" : "每日任務";
         int completed = entries.Count(item => item.completed);
         summary.text = "已完成 " + completed + " / " + entries.Count;
+        if (dailyTab) dailyTab.image.color = showAchievements ? cream : green;
+        if (achievementTab) achievementTab.image.color = showAchievements ? green : cream;
 
         IEnumerable<LTCProgressionEntry> ordered = entries
             .OrderByDescending(item => item.completed)
@@ -169,18 +175,24 @@ public sealed class LTCProgressionPanel : MonoBehaviour
         GameObject row = Panel(content, "項目_" + entry.id,
             entry.completed ? new Color(0.86f, 0.95f, 0.88f, 1f) : Color.white);
         var element = row.AddComponent<LayoutElement>();
-        element.preferredHeight = 88f;
-        element.minHeight = 88f;
+        element.preferredHeight = 108f;
+        element.minHeight = 108f;
 
         TMP_Text heading = Text(row.transform, "名稱", (entry.completed ? "✓ " : "○ ") + entry.title,
             22, FontStyles.Bold, TextAlignmentOptions.Left);
-        heading.color = entry.completed ? green : new Color(0.20f, 0.24f, 0.21f);
+        heading.color = LTCWarmUi.Ink;
         SetRect(heading.rectTransform, new Vector2(0.025f, 0.52f), new Vector2(0.66f, 0.92f));
 
         TMP_Text detail = Text(row.transform, "說明", entry.description, 17, FontStyles.Normal,
             TextAlignmentOptions.Left);
         detail.color = new Color(0.35f, 0.38f, 0.35f);
-        SetRect(detail.rectTransform, new Vector2(0.025f, 0.08f), new Vector2(0.68f, 0.50f));
+        SetRect(detail.rectTransform, new Vector2(0.025f, 0.22f), new Vector2(0.68f, 0.50f));
+        var track = Panel(row.transform, "進度底", new Color(.90f, .88f, .80f));
+        SetRect(track.GetComponent<RectTransform>(), new Vector2(.03f, .10f), new Vector2(.66f, .17f));
+        var fill = Panel(track.transform, "進度條", new Color(.49f, .63f, .36f));
+        float fraction = entry.completed ? 1f : (entry.target > 0 ? Mathf.Clamp01(entry.progress / entry.target) : 0f);
+        SetRect(fill.GetComponent<RectTransform>(), Vector2.zero, new Vector2(fraction, 1));
+        fill.SetActive(fraction > 0);
 
         string rewardName = string.IsNullOrEmpty(entry.rewardLabel)
             ? entry.rewardCoins + " 金幣"
@@ -190,7 +202,7 @@ public sealed class LTCProgressionPanel : MonoBehaviour
             : entry.ProgressLabel + "\n獎勵 " + rewardName;
         TMP_Text progress = Text(row.transform, "進度", reward, 18, FontStyles.Bold,
             TextAlignmentOptions.Center);;
-        progress.color = entry.completed ? green : orange;
+        progress.color = entry.completed ? new Color(.25f, .40f, .23f) : new Color(.53f, .30f, .15f);
         SetRect(progress.rectTransform, new Vector2(0.70f, 0.10f), new Vector2(0.975f, 0.90f));
     }
 
@@ -199,6 +211,8 @@ public sealed class LTCProgressionPanel : MonoBehaviour
         var obj = new GameObject(name, typeof(RectTransform), typeof(Image));
         obj.transform.SetParent(parent, false);
         obj.GetComponent<Image>().color = color;
+        if (name != "成就與每日任務")
+            LTCWarmUi.Surface(obj.GetComponent<Image>(), color, name == "內容卡片" || name.StartsWith("項目_"));
         RectTransform rect = obj.GetComponent<RectTransform>();
         rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
         rect.offsetMin = Vector2.zero; rect.offsetMax = Vector2.zero;
@@ -210,7 +224,7 @@ public sealed class LTCProgressionPanel : MonoBehaviour
         GameObject obj = Panel(parent, name, color);
         Button button = obj.AddComponent<Button>();
         TMP_Text text = Text(obj.transform, "文字", label, 20, FontStyles.Bold, TextAlignmentOptions.Center);
-        text.color = Color.white;
+        text.color = LTCWarmUi.Ink;
         SetRect(text.rectTransform, Vector2.zero, Vector2.one, new Vector2(8f, 4f), new Vector2(-8f, -4f));
         return button;
     }
@@ -223,6 +237,7 @@ public sealed class LTCProgressionPanel : MonoBehaviour
         TMP_Text text = obj.GetComponent<TMP_Text>();
         if (font != null) text.font = font;
         text.text = value; text.fontSize = size; text.fontStyle = style; text.alignment = alignment;
+        text.color = LTCWarmUi.Ink;
         text.enableWordWrapping = true; text.raycastTarget = false;
         return text;
     }
