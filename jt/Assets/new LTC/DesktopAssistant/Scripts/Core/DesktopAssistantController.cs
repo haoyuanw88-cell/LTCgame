@@ -76,9 +76,15 @@ namespace LTC.DesktopAssistant
 
         public void SetReminderState()
         {
-            SetState(AssistantState.Reminder);
-            characterView.ShowBubble("提醒測試：我只會提供建議，不會自動操作遊戲。", settings.bubbleDuration);
+            ShowReminderMessage("提醒測試：我只會提供建議，不會自動操作遊戲。");
             stateMenu.Close();
+        }
+
+        /// <summary>供主動提醒模組顯示訊息；只改變助理視覺，不會操作其他程式。</summary>
+        public void ShowReminderMessage(string message)
+        {
+            SetState(AssistantState.Reminder);
+            characterView.ShowBubble(message, settings.bubbleDuration);
             ScheduleReturnToIdle();
         }
 
