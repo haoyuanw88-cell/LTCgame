@@ -1454,6 +1454,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   bgmClip: {fileID: 8300000, guid: b8156a7ef24d71a43bc191e1befcfb0b, type: 3}
+  quizFont: {fileID: 11400000, guid: 503a6c26930172f49bd89d54dbe162e9, type: 2}
+  goldFrame: {fileID: 21300000, guid: aa4d01210cd0b4549a3a903cadfc68d3, type: 3}
+  trueButtonSprite: {fileID: 21300000, guid: 6577c1b145be0d14c98804d7e41aaf70, type: 3}
+  falseButtonSprite: {fileID: 21300000, guid: b68c9f666fb41d64dbfcef605627bc10, type: 3}
 --- !u!1 &2015399754
 GameObject:
   m_ObjectHideFlags: 0

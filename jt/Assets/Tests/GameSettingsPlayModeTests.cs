@@ -13,8 +13,11 @@ namespace LTC.Tests
     public sealed class GameSettingsPlayModeTests
     {
         private const string Key = "LTC_GameTutorialsEnabled";
+        private const string UnlockKey = "LTC_UnlockAllLevels";
         private bool hadPreference;
         private int previousPreference;
+        private bool hadUnlockPreference;
+        private int previousUnlockPreference;
         private static Type TypeOf(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(a => a.GetType(name)).First(t => t != null);
         private static MonoBehaviour Find(string name) => UnityEngine.Object.FindObjectsByType<MonoBehaviour>(
@@ -32,6 +35,8 @@ namespace LTC.Tests
         {
             hadPreference = PlayerPrefs.HasKey(Key);
             previousPreference = PlayerPrefs.GetInt(Key);
+            hadUnlockPreference = PlayerPrefs.HasKey(UnlockKey);
+            previousUnlockPreference = PlayerPrefs.GetInt(UnlockKey);
         }
 
         [TearDown]
@@ -39,6 +44,8 @@ namespace LTC.Tests
         {
             if (hadPreference) PlayerPrefs.SetInt(Key, previousPreference);
             else PlayerPrefs.DeleteKey(Key);
+            if (hadUnlockPreference) PlayerPrefs.SetInt(UnlockKey, previousUnlockPreference);
+            else PlayerPrefs.DeleteKey(UnlockKey);
             PlayerPrefs.Save();
             foreach (string type in new[] { "GameController", "PipeManager" })
                 TypeOf(type).GetField("tutorialShownThisSession", BindingFlags.NonPublic | BindingFlags.Static)
@@ -49,6 +56,7 @@ namespace LTC.Tests
         public IEnumerator SettingsOpensSavesAcrossSceneReloadAndReturns()
         {
             PlayerPrefs.DeleteKey(Key);
+            PlayerPrefs.DeleteKey(UnlockKey);
             Assert.IsTrue((bool)TypeOf("LTCGameSettings").GetProperty("TutorialsEnabled").GetValue(null),
                 "Tutorials should be enabled for players without a saved preference.");
             SceneManager.LoadScene("GameScene"); yield return null; yield return null;
@@ -67,6 +75,10 @@ namespace LTC.Tests
             Assert.IsTrue(toggle.isOn);
             toggle.isOn = false;
             Assert.AreEqual(0, PlayerPrefs.GetInt(Key));
+            var unlock = page.Find("設定內容/解鎖所有關卡開關").GetComponent<Toggle>();
+            Assert.IsFalse(unlock.isOn);
+            unlock.isOn = true;
+            Assert.AreEqual(1, PlayerPrefs.GetInt(UnlockKey));
             page.Find("返回我的頁").GetComponent<Button>().onClick.Invoke();
             Assert.IsFalse(page.gameObject.activeSelf);
             Assert.IsTrue(root.Find("我的頁").gameObject.activeInHierarchy);
@@ -75,6 +87,10 @@ namespace LTC.Tests
             root.Find("我的頁/個人資料內容/設定").GetComponent<Button>().onClick.Invoke();
             toggle = root.Find("設定頁/設定內容/遊戲教學開關").GetComponent<Toggle>();
             Assert.IsFalse(toggle.isOn, "Reloading must retain the saved setting.");
+            unlock = root.Find("設定頁/設定內容/解鎖所有關卡開關").GetComponent<Toggle>();
+            Assert.IsTrue(unlock.isOn);
+            unlock.isOn = false;
+            Assert.AreEqual(0, PlayerPrefs.GetInt(UnlockKey));
             toggle.isOn = true;
             Assert.AreEqual(1, PlayerPrefs.GetInt(Key));
         }

@@ -39,6 +39,77 @@ namespace LTC.Tests
             for(int i=0;i<2;i++)if(!existed[i])PlayerPrefs.DeleteKey(keys[i]);
             PlayerPrefs.Save();
         }
+
+        [UnityTest]
+        public IEnumerator RestoreDefaultsRequiresConfirmationAndKeepsOtherPreferences()
+        {
+            const string tutorialKey = "LTC_GameTutorialsEnabled";
+            const string unlockKey = "LTC_UnlockAllLevels";
+            bool hadTutorial = PlayerPrefs.HasKey(tutorialKey);
+            int savedTutorial = PlayerPrefs.GetInt(tutorialKey, 1);
+            bool hadUnlock = PlayerPrefs.HasKey(unlockKey);
+            int savedUnlock = PlayerPrefs.GetInt(unlockKey);
+            string unrelatedKey = "LTC_ResetDefaultsTest_" + Guid.NewGuid().ToString("N");
+            PlayerPrefs.SetInt(unrelatedKey, 84321);
+            try
+            {
+                SceneManager.LoadScene("GameScene"); yield return null; yield return null;
+                var root = Root();
+                root.Find("首次引導").gameObject.SetActive(false);
+                root.Find("每日登入彈窗").gameObject.SetActive(false);
+                root.Find("底部導覽/我的").GetComponent<Button>().onClick.Invoke();
+                root.Find("我的頁/個人資料內容/設定").GetComponent<Button>().onClick.Invoke();
+                var page = root.Find("設定頁");
+                var music = page.Find("設定內容/背景音樂/滑桿").GetComponent<Slider>();
+                var effects = page.Find("設定內容/音效/滑桿").GetComponent<Slider>();
+                var tutorial = page.Find("設定內容/遊戲教學開關").GetComponent<Toggle>();
+                var unlock = page.Find("設定內容/解鎖所有關卡開關").GetComponent<Toggle>();
+                music.value = 73; effects.value = 66; tutorial.isOn = false;
+                unlock.isOn = true;
+                var reset = page.Find("恢復預設設定").GetComponent<Button>();
+                var confirmation = page.Find("恢復預設確認");
+                Assert.IsFalse(confirmation.gameObject.activeSelf);
+                reset.onClick.Invoke();
+                Assert.IsTrue(confirmation.gameObject.activeInHierarchy);
+                Assert.AreEqual(73, music.value);
+                Assert.AreEqual(66, effects.value);
+                Assert.IsFalse(tutorial.isOn);
+                confirmation.Find("確認卡片/取消").GetComponent<Button>().onClick.Invoke();
+                Assert.IsFalse(confirmation.gameObject.activeSelf);
+                Assert.AreEqual(73, music.value);
+                Assert.AreEqual(66, effects.value);
+                Assert.AreEqual(0, PlayerPrefs.GetInt(tutorialKey));
+                Assert.IsTrue(unlock.isOn);
+                reset.onClick.Invoke();
+                confirmation.Find("確認卡片/確認恢復").GetComponent<Button>().onClick.Invoke();
+                Assert.IsFalse(confirmation.gameObject.activeSelf);
+                Assert.AreEqual(18, music.value); Assert.AreEqual(45, effects.value);
+                Assert.IsTrue(tutorial.isOn);
+                Assert.IsFalse(unlock.isOn);
+                Assert.AreEqual("18%", Label(page.Find("設定內容/背景音樂/百分比")));
+                Assert.AreEqual("45%", Label(page.Find("設定內容/音效/百分比")));
+                var service = Audio();
+                Assert.That((float)service.GetType().GetField("musicVolume").GetValue(service), Is.EqualTo(.18f).Within(.001f));
+                Assert.That((float)service.GetType().GetField("effectsVolume").GetValue(service), Is.EqualTo(.45f).Within(.001f));
+                Assert.AreEqual(84321, PlayerPrefs.GetInt(unrelatedKey));
+                SceneManager.LoadScene("GameScene"); yield return null; yield return null;
+                page = Root().Find("設定頁");
+                Assert.AreEqual(18, page.Find("設定內容/背景音樂/滑桿").GetComponent<Slider>().value);
+                Assert.AreEqual(45, page.Find("設定內容/音效/滑桿").GetComponent<Slider>().value);
+                Assert.IsTrue(page.Find("設定內容/遊戲教學開關").GetComponent<Toggle>().isOn);
+                Assert.AreEqual(84321, PlayerPrefs.GetInt(unrelatedKey));
+            }
+            finally
+            {
+                if (hadTutorial) PlayerPrefs.SetInt(tutorialKey, savedTutorial);
+                else PlayerPrefs.DeleteKey(tutorialKey);
+                if (hadUnlock) PlayerPrefs.SetInt(unlockKey, savedUnlock);
+                else PlayerPrefs.DeleteKey(unlockKey);
+                PlayerPrefs.DeleteKey(unrelatedKey);
+                PlayerPrefs.Save();
+            }
+        }
+
         [UnityTest]
         public IEnumerator SlidersRespondToPointerSaveIndependentlyAndSurviveReload()
         {

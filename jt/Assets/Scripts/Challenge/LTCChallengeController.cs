@@ -73,18 +73,23 @@ public sealed class LTCChallengeController : MonoBehaviour
         roundViewport.gameObject.AddComponent<RectMask2D>();
         ui.Text(root,"模式說明","挑戰紀錄獨立同步至雲端",20,.12f,.005f,.88f,.05f);
         intro=Overlay("開始挑戰", "認知遊戲 RUSH", "每關 10 秒，完成即攻擊敵人 1 點。\n失敗扣 1 點生命，3 點生命用完即結束。\n連續成功：倍率每關 +0.5，最高 ×5.0。\n攻擊 50 分，擊倒再加 100 分，皆乘目前倍率。\n卡牌先記憶、翻面，再開始倒數。", "開始挑戰", StartRun);
-        pause=Overlay("暫停畫面","挑戰暫停","倒數與記憶展示已暫停。\n繼續後保留目前關卡與分數。","繼續挑戰",()=>SetPaused(false));
+        pause=Overlay("暫停畫面","挑戰暫停","倒數與記憶展示已暫停。\n繼續後保留目前關卡與分數。","繼續挑戰",()=>SetPaused(false),showSettings:true);
         pause.SetActive(false);
     }
 
-    GameObject Overlay(string name,string title,string body,string action,System.Action callback)
+    GameObject Overlay(string name,string title,string body,string action,System.Action callback,bool showSettings=false)
     {
         var overlay=ui.Panel(root,name,new Color(.18f,.16f,.12f,.75f),0,0,1,1,false);
         var card=ui.Panel(overlay,"內容",ui.Cream,.18f,.14f,.82f,.86f);
         ui.Text(card,"標題",title,42,.06f,.78f,.94f,.95f);
         ui.Text(card,"說明",body,28,.07f,.27f,.93f,.77f);
-        ui.Button(card,"主要按鈕",action,ui.Sage,.12f,.075f,.56f,.22f,callback);
-        ui.Button(card,"返回首頁","返回首頁",ui.Blue,.61f,.075f,.88f,.22f,ReturnHome);
+        ui.Button(card,"主要按鈕",action,ui.Sage,.12f,.075f,showSettings ? .38f : .56f,.22f,callback);
+        ui.Button(card,"返回首頁","返回首頁",ui.Blue,showSettings ? .64f : .61f,.075f,.88f,.22f,ReturnHome);
+        if (showSettings)
+        {
+            var settings = ui.Button(card, "設定按鈕", "設定", ui.Cream, .40f, .075f, .62f, .22f, null);
+            LTCGameSettingsPanel.AttachToPause(overlay.gameObject, card.gameObject, settings);
+        }
         return overlay.gameObject;
     }
 

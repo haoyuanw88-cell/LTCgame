@@ -68,7 +68,7 @@ public sealed class CardLevelSelection : MonoBehaviour
         if (catalog != null)
             foreach (CardLevelData level in catalog.levels)
                 if (level != null && !available.Contains(level)) available.Add(level);
-        if (SelectedIndex < 0 || SelectedIndex >= available.Count)
+        if (!CanPlay(SelectedIndex))
             SelectedIndex = available.Count > 0 ? 0 : -1;
         page = SelectedIndex >= 0 ? SelectedIndex / PageSize : 0;
         panel.SetActive(true);
@@ -79,8 +79,9 @@ public sealed class CardLevelSelection : MonoBehaviour
 
     public void SelectLevel(int index)
     {
-        if (index < 0 || index >= available.Count) return;
+        if (!CanPlay(index)) return;
         SelectedIndex = index;
+        page = index / PageSize;
         Refresh();
     }
 
@@ -92,19 +93,20 @@ public sealed class CardLevelSelection : MonoBehaviour
 
     public void PlaySelected()
     {
-        if (!IsOpen || SelectedIndex < 0 || SelectedIndex >= available.Count) return;
+        if (!IsOpen || SelectedIndex / PageSize != page) return;
         StartLevel(SelectedIndex);
     }
 
     public void ShowCompletion(bool win, string result)
     {
+        int currentIndex = available.IndexOf(manager.levelToLoad);
+        if (win && currentIndex >= 0) LTCLevelSelection.MarkCleared(CardLevelCatalog.ResourceName, manager.levelToLoad);
         if (completionPanel == null) return;
         LTCReturnHomeButton.Hide();
-        int currentIndex = available.IndexOf(manager.levelToLoad);
         lastWin = win;
         if (completionTitle != null) completionTitle.text = win ? "過關！" : "再試一次";
         resultLabel.text = result;
-        completionNextButton.interactable = win && currentIndex >= 0 && currentIndex + 1 < available.Count;
+        completionNextButton.interactable = win && currentIndex >= 0 && CanPlay(currentIndex + 1);
         completionPanel.SetActive(true);
         openButton.gameObject.SetActive(false);
         if (pauseMenu != null && pauseMenu.pauseButton != null) pauseMenu.pauseButton.gameObject.SetActive(false);
@@ -114,12 +116,13 @@ public sealed class CardLevelSelection : MonoBehaviour
     {
         if (!lastWin || completionPanel == null || !completionPanel.activeSelf || !manager.IsBattleEnded) return;
         int currentIndex = available.IndexOf(manager.levelToLoad);
-        if (currentIndex < 0 || currentIndex + 1 >= available.Count) return;
+        if (currentIndex < 0) return;
         StartLevel(currentIndex + 1);
     }
 
     private void StartLevel(int index)
     {
+        if (!CanPlay(index)) return;
         SelectedIndex = index;
         if (completionPanel != null) completionPanel.SetActive(false);
         panel.SetActive(false);
@@ -130,6 +133,8 @@ public sealed class CardLevelSelection : MonoBehaviour
 
     }
 
+    private bool CanPlay(int index) => LTCLevelSelection.CanPlay(CardLevelCatalog.ResourceName, available, index);
+
     private void Refresh()
     {
         for (int slot = 0; slot < levelButtons.Length; slot++)
@@ -138,8 +143,11 @@ public sealed class CardLevelSelection : MonoBehaviour
             bool exists = index < available.Count;
             levelButtons[slot].gameObject.SetActive(exists);
             // The selection frame is a sibling of the button; hide it even for an empty slot.
-            selectionFrames[slot].enabled = exists && index == SelectedIndex;
+            bool unlocked = CanPlay(index);
+            selectionFrames[slot].enabled = unlocked && index == SelectedIndex;
             if (!exists) continue;
+            LTCLevelSelection.UpdateTile(levelButtons[slot], numberLabels[slot], sizeLabels[slot],
+                !unlocked, LTCLevelSelection.IsCleared(CardLevelCatalog.ResourceName, available[index]));
             numberLabels[slot].text = (index + 1).ToString("00");
             if (sizeLabels[slot] != null) sizeLabels[slot].gameObject.SetActive(false);
 
@@ -148,9 +156,9 @@ public sealed class CardLevelSelection : MonoBehaviour
         pageLabel.text = (page + 1) + " / " + pageCount;
         previousButton.interactable = page > 0;
         nextButton.interactable = page + 1 < pageCount;
-        playButton.interactable = SelectedIndex >= 0;
-        selectedLabel.text = SelectedIndex >= 0
-            ? "已選擇第 " + (SelectedIndex + 1) + " 關" : "尚未加入關卡";
+        playButton.interactable = CanPlay(SelectedIndex) && SelectedIndex / PageSize == page;
+        if (playButton.interactable) selectedLabel.text = "已選擇第 " + (SelectedIndex + 1) + " 關";
+        else selectedLabel.text = available.Count == 0 ? "尚未加入關卡" : "請選擇已解鎖的關卡";
     }
 
     private void ReturnHome()

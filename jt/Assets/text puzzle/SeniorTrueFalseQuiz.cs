@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using LTCCognitiveAssessment;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -90,15 +91,23 @@ public class SeniorTrueFalseQuiz : MonoBehaviour, ICognitiveGamePauseTarget
     private AudioSource bgmSource;
     // ============================
 
-    private Text headerText;
-    private Text scoreText;
-    private Text questionText;
-    private Text feedbackText;
+    private TMP_Text headerText;
+    private TMP_Text scoreText;
+    private TMP_Text questionText;
+    private TMP_Text feedbackText;
     private Button trueButton;
     private Button falseButton;
     private Button restartButton;
 
-    private Font quizFont;
+    [SerializeField] private TMP_FontAsset quizFont;
+    [SerializeField] private Sprite goldFrame;
+    [SerializeField] private Sprite trueButtonSprite;
+    [SerializeField] private Sprite falseButtonSprite;
+
+    private static readonly Color PageColor = new Color32(255, 246, 222, 255);
+    private static readonly Color InkColor = new Color32(43, 78, 82, 255);
+    private static readonly Color CorrectColor = new Color32(31, 104, 81, 255);
+    private static readonly Color IncorrectColor = new Color32(139, 51, 39, 255);
     private int currentQuestion;
     private int score;
     private int trialIndex;
@@ -110,18 +119,6 @@ public class SeniorTrueFalseQuiz : MonoBehaviour, ICognitiveGamePauseTarget
 
     private void Start()
     {
-        quizFont = Font.CreateDynamicFontFromOSFont(
-            new[]
-            {
-                "Microsoft JhengHei UI",
-                "Microsoft JhengHei",
-                "Noto Sans CJK TC",
-                "PingFang TC",
-                "Arial Unicode MS",
-                "SimHei"
-            },
-            72);
-
         ConfigureCamera();
         BuildInterface();
         SetupBackgroundMusic(); // 初始化背景音樂
@@ -139,7 +136,7 @@ public class SeniorTrueFalseQuiz : MonoBehaviour, ICognitiveGamePauseTarget
         }
 
         mainCamera.clearFlags = CameraClearFlags.SolidColor;
-        mainCamera.backgroundColor = new Color(0.05f, 0.52f, 0.14f);
+        mainCamera.backgroundColor = PageColor;
         mainCamera.orthographic = true;
     }
 
@@ -173,45 +170,36 @@ public class SeniorTrueFalseQuiz : MonoBehaviour, ICognitiveGamePauseTarget
 
         CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1080, 1080);
+        scaler.referenceResolution = new Vector2(1366, 768);
         scaler.matchWidthOrHeight = 0.5f;
 
         canvasObject.AddComponent<GraphicRaycaster>();
-
         RectTransform root = canvasObject.GetComponent<RectTransform>();
+        CreatePanel(root, "Background", Vector2.zero, Vector2.one, null, PageColor);
 
-        CreatePanel(root, "Background", Anchor.Stretch, Vector2.zero, Vector2.zero, new Color(0.05f, 0.6f, 0.16f), 0, false);
-        CreateDecorativeCircle(root, "Circle Top", new Vector2(0, 170), new Vector2(560, 270), new Color(0.32f, 0.86f, 0.16f, 0.9f));
-        CreateDecorativeCircle(root, "Circle Left", new Vector2(-225, 0), new Vector2(450, 760), new Color(0.13f, 0.72f, 0.2f, 0.75f));
-        CreateDecorativeCircle(root, "Circle Bottom", new Vector2(0, -200), new Vector2(540, 280), new Color(0.03f, 0.32f, 0.13f, 0.7f));
+        Image header = CreatePanel(root, "Header Panel", new Vector2(.34f, .79f),
+            new Vector2(.66f, .98f), goldFrame, Color.white);
+        CreateText(header.rectTransform, "Title", "生活常識問答", 34,
+            new Vector2(.13f, .48f), new Vector2(.87f, .79f));
+        headerText = CreateText(header.rectTransform, "Header Text", string.Empty, 27,
+            new Vector2(.13f, .22f), new Vector2(.87f, .49f));
 
-        RectTransform headerPanel = CreatePanel(root, "Header Panel", Anchor.TopCenter, new Vector2(100, -75), new Vector2(760, 125), new Color(0.82f, 1f, 0.56f), 34, true);
-        headerText = CreateText(headerPanel, "Header Text", "問題 1", 72, FontStyle.Bold, TextAnchor.MiddleCenter, Color.black);
+        Image questionPanel = CreatePanel(root, "Question Panel", new Vector2(.18f, .31f),
+            new Vector2(.82f, .77f), goldFrame, Color.white);
+        questionText = CreateText(questionPanel.rectTransform, "Question Text", string.Empty, 50,
+            new Vector2(.12f, .34f), new Vector2(.88f, .83f));
+        feedbackText = CreateText(questionPanel.rectTransform, "Feedback Text", string.Empty, 30,
+            new Vector2(.12f, .16f), new Vector2(.88f, .34f));
 
-        RectTransform badge = CreatePanel(root, "Badge", Anchor.TopLeft, new Vector2(165, -75), new Vector2(330, 150), new Color(0.9f, 0.1f, 0.05f), 26, true);
-        CreateText(badge, "Badge Text", "生活", 64, FontStyle.Bold, TextAnchor.MiddleCenter, new Color(1f, 0.93f, 0.05f));
-
-        RectTransform questionPanel = CreatePanel(root, "Question Panel", Anchor.MiddleCenter, new Vector2(0, 45), new Vector2(980, 430), new Color(0.83f, 1f, 0.58f), 28, true);
-        questionText = CreateText(questionPanel, "Question Text", string.Empty, 78, FontStyle.Bold, TextAnchor.MiddleCenter, Color.black);
-        questionText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        questionText.verticalOverflow = VerticalWrapMode.Truncate;
-
-        // 【優化】Feedback Text 預設為黑色
-        feedbackText = CreateText(root, "Feedback Text", string.Empty, 46, FontStyle.Bold, TextAnchor.MiddleCenter, Color.black);
-        SetRect(feedbackText.rectTransform, Anchor.MiddleCenter, new Vector2(0, -100), new Vector2(980, 70));
-
-        trueButton = CreateAnswerButton(root, "True Button", "對", new Vector2(-260, 147), new Color(0.86f, 1f, 0.62f));
-        falseButton = CreateAnswerButton(root, "False Button", "錯", new Vector2(260, 147), new Color(0.86f, 1f, 0.62f));
+        trueButton = CreateAnswerButton(root, "True Button", "對", .36f, trueButtonSprite);
+        falseButton = CreateAnswerButton(root, "False Button", "錯", .64f, falseButtonSprite);
         trueButton.onClick.AddListener(() => Answer(true));
         falseButton.onClick.AddListener(() => Answer(false));
 
-        RectTransform divider = CreatePanel(root, "Button Divider", Anchor.BottomCenter, new Vector2(0, -100), new Vector2(4, 136), Color.black, 0, false);
-        divider.SetAsLastSibling();
+        scoreText = CreateText(root, "Score Text", string.Empty, 30,
+            new Vector2(.25f, .055f), new Vector2(.75f, .12f));
 
-        scoreText = CreateText(root, "Score Text", string.Empty, 38, FontStyle.Bold, TextAnchor.MiddleCenter, Color.white);
-        SetRect(scoreText.rectTransform, Anchor.BottomCenter, new Vector2(0, 70), new Vector2(980, 55));
-
-        restartButton = CreateAnswerButton(root, "Restart Button", "再玩一次", new Vector2(0, 160), new Color(1f, 0.9f, 0.32f));
+        restartButton = CreateAnswerButton(root, "Restart Button", "再玩一次", .36f, trueButtonSprite);
         restartButton.onClick.AddListener(RestartGame);
         restartButton.gameObject.SetActive(false);
     }
@@ -268,8 +256,7 @@ public class SeniorTrueFalseQuiz : MonoBehaviour, ICognitiveGamePauseTarget
         }
         RecordAnswerTrial(question, playerAnswer, isCorrect);
 
-        // 【優化】答對使用深藍色，答錯使用純黑色，提高對比與長輩辨識度
-        feedbackText.color = isCorrect ? new Color(0.05f, 0.2f, 0.6f) : Color.black;
+        feedbackText.color = isCorrect ? CorrectColor : IncorrectColor;
         feedbackText.text = isCorrect ? $"答對了！{question.Tip}" : $"答錯了。{question.Tip}";
         scoreText.text = $"答對 {score} 題 / 共 {questions.Count} 題";
 
@@ -295,14 +282,23 @@ public class SeniorTrueFalseQuiz : MonoBehaviour, ICognitiveGamePauseTarget
     {
         headerText.text = "完成";
         questionText.text = $"完成！\n答對 {score} / {questions.Count} 題";
-        feedbackText.color = Color.black; // 【優化】結算文字改為黑色
+        feedbackText.color = InkColor;
         feedbackText.text = score >= questions.Count * 0.7f ? "表現很好，生活小知識都記得很清楚。" : "再玩一次，慢慢答就會更熟悉。";
         scoreText.text = "謝謝遊玩";
         trueButton.gameObject.SetActive(false);
         falseButton.gameObject.SetActive(false);
         restartButton.gameObject.SetActive(true);
         CompleteAssessment();
-        LTCReturnHomeButton.Show();
+        Button homeButton = LTCReturnHomeButton.Show();
+        SetAnswerButtonBounds((RectTransform)homeButton.transform, .64f);
+        ApplyAnswerButtonStyle(homeButton, falseButtonSprite);
+        Transform originalLabel = homeButton.transform.Find("Label");
+        originalLabel.gameObject.SetActive(false);
+        if (homeButton.transform.Find("Quiz Home Label") == null)
+        {
+            CreateText((RectTransform)homeButton.transform, "Quiz Home Label", "返回首頁", 44,
+                new Vector2(.12f, .17f), new Vector2(.88f, .83f));
+        }
     }
 
     private void RecordAnswerTrial(Question question, bool playerAnswer, bool isCorrect)
@@ -347,112 +343,73 @@ public class SeniorTrueFalseQuiz : MonoBehaviour, ICognitiveGamePauseTarget
             questions.Count);
     }
 
-    private Button CreateAnswerButton(RectTransform parent, string name, string label, Vector2 anchoredPosition, Color color)
+    private Button CreateAnswerButton(RectTransform parent, string name, string label, float centerX, Sprite sprite)
     {
-        RectTransform buttonRect = CreatePanel(parent, name, Anchor.BottomCenter, anchoredPosition, new Vector2(460, 145), color, 24, true);
-        Button button = buttonRect.gameObject.AddComponent<Button>();
-        ColorBlock colors = button.colors;
-        colors.normalColor = color;
-        colors.highlightedColor = new Color(1f, 1f, 0.78f);
-        colors.pressedColor = new Color(0.66f, 0.93f, 0.42f);
-        colors.disabledColor = new Color(0.72f, 0.8f, 0.64f);
-        button.colors = colors;
+        Image face = CreatePanel(parent, name, Vector2.zero, Vector2.one, sprite, Color.white);
+        SetAnswerButtonBounds(face.rectTransform, centerX);
+        Button button = face.gameObject.AddComponent<Button>();
+        button.targetGraphic = face;
+        ApplyAnswerButtonStyle(button, sprite);
 
-        Text text = CreateText(buttonRect, $"{name} Text", label, 70, FontStyle.Bold, TextAnchor.MiddleCenter, Color.black);
-        text.raycastTarget = false;
-
+        CreateText(face.rectTransform, $"{name} Text", label, 44,
+            new Vector2(.12f, .17f), new Vector2(.88f, .83f));
         return button;
     }
 
-    private Text CreateText(RectTransform parent, string name, string text, int size, FontStyle style, TextAnchor alignment, Color color)
+    private static void SetAnswerButtonBounds(RectTransform rect, float centerX)
     {
-        GameObject textObject = new(name);
+        SetBounds(rect, new Vector2(centerX - .11f, .13f), new Vector2(centerX + .11f, .30f));
+    }
+
+    private static void ApplyAnswerButtonStyle(Button button, Sprite sprite)
+    {
+        Image face = button.image;
+        face.sprite = sprite;
+        face.color = Color.white;
+        face.preserveAspect = true;
+        face.raycastTarget = true;
+        ColorBlock colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1f, .97f, .87f);
+        colors.pressedColor = new Color(.88f, .91f, .86f);
+        colors.selectedColor = colors.highlightedColor;
+        colors.disabledColor = new Color(1f, 1f, 1f, .45f);
+        button.colors = colors;
+
+    }
+
+    private TMP_Text CreateText(RectTransform parent, string name, string text, float size,
+        Vector2 min, Vector2 max)
+    {
+        var textObject = new GameObject(name, typeof(RectTransform));
         textObject.transform.SetParent(parent, false);
-
-        Text uiText = textObject.AddComponent<Text>();
-        uiText.font = quizFont;
-        uiText.text = text;
-        uiText.fontSize = size;
-        uiText.fontStyle = style;
-        uiText.alignment = alignment;
-        uiText.color = color;
-        uiText.resizeTextForBestFit = true;
-        uiText.resizeTextMinSize = Mathf.Max(24, size / 2);
-        uiText.resizeTextMaxSize = size;
-        uiText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        uiText.verticalOverflow = VerticalWrapMode.Overflow;
-
-        SetRect(uiText.rectTransform, Anchor.Stretch, Vector2.zero, Vector2.zero);
-        return uiText;
+        var label = textObject.AddComponent<TextMeshProUGUI>();
+        label.font = quizFont;
+        label.text = text;
+        label.fontSize = size;
+        label.fontStyle = FontStyles.Bold;
+        label.alignment = TextAlignmentOptions.Center;
+        label.color = InkColor;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 18;
+        label.fontSizeMax = size;
+        label.overflowMode = TextOverflowModes.Truncate;
+        label.raycastTarget = false;
+        SetBounds(label.rectTransform, min, max);
+        return label;
     }
 
-    private RectTransform CreatePanel(RectTransform parent, string name, Anchor anchor, Vector2 anchoredPosition, Vector2 size, Color color, int radius, bool shadow)
+    private static Image CreatePanel(RectTransform parent, string name, Vector2 min, Vector2 max,
+        Sprite sprite, Color color)
     {
-        GameObject panelObject = new(name);
+        var panelObject = new GameObject(name, typeof(RectTransform));
         panelObject.transform.SetParent(parent, false);
-
         Image image = panelObject.AddComponent<Image>();
+        image.sprite = sprite;
         image.color = color;
-        image.sprite = radius > 0 ? CreateRoundedSprite(radius) : null;
-        image.type = radius > 0 ? Image.Type.Sliced : Image.Type.Simple;
-
-        if (shadow)
-        {
-            Shadow uiShadow = panelObject.AddComponent<Shadow>();
-            uiShadow.effectColor = new Color(0f, 0f, 0f, 0.32f);
-            uiShadow.effectDistance = new Vector2(8, -8);
-        }
-
-        RectTransform rect = panelObject.GetComponent<RectTransform>();
-        SetRect(rect, anchor, anchoredPosition, size);
-        return rect;
-    }
-
-    private void CreateDecorativeCircle(RectTransform parent, string name, Vector2 anchorPoint, Vector2 size, Color color)
-    {
-        RectTransform circle = CreatePanel(parent, name, Anchor.Custom, Vector2.zero, size, color, 128, false);
-        circle.anchorMin = anchorPoint;
-        circle.anchorMax = anchorPoint;
-        circle.pivot = new Vector2(0.5f, 0.5f);
-    }
-
-    private Sprite CreateRoundedSprite(int radius)
-    {
-        const int size = 128;
-        int safeRadius = Mathf.Clamp(radius, 0, (size / 2) - 1);
-        Texture2D texture = new(size, size, TextureFormat.RGBA32, false);
-        Color clear = new(1f, 1f, 1f, 0f);
-        Color fill = Color.white;
-
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                bool inside = IsInsideRoundedRect(x, y, size, safeRadius);
-                texture.SetPixel(x, y, inside ? fill : clear);
-            }
-        }
-
-        texture.Apply();
-        texture.wrapMode = TextureWrapMode.Clamp;
-        texture.name = $"Rounded {radius}";
-
-        return Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, new Vector4(safeRadius, safeRadius, safeRadius, safeRadius));
-    }
-
-    private bool IsInsideRoundedRect(int x, int y, int size, int radius)
-    {
-        int left = radius;
-        int right = size - radius - 1;
-        int bottom = radius;
-        int top = size - radius - 1;
-
-        int closestX = Mathf.Clamp(x, left, right);
-        int closestY = Mathf.Clamp(y, bottom, top);
-        int dx = x - closestX;
-        int dy = y - closestY;
-
-        return dx * dx + dy * dy <= radius * radius;
+        image.raycastTarget = false;
+        SetBounds(image.rectTransform, min, max);
+        return image;
     }
 
     private void EnsureEventSystem()
@@ -471,57 +428,11 @@ public class SeniorTrueFalseQuiz : MonoBehaviour, ICognitiveGamePauseTarget
 #endif
     }
 
-    private void SetRect(RectTransform rect, Anchor anchor, Vector2 anchoredPosition, Vector2 size)
+    private static void SetBounds(RectTransform rect, Vector2 min, Vector2 max)
     {
-        switch (anchor)
-        {
-            case Anchor.Stretch:
-                rect.anchorMin = Vector2.zero;
-                rect.anchorMax = Vector2.one;
-                rect.offsetMin = Vector2.zero;
-                rect.offsetMax = Vector2.zero;
-                break;
-            case Anchor.TopLeft:
-                rect.anchorMin = new Vector2(0f, 1f);
-                rect.anchorMax = new Vector2(0f, 1f);
-                rect.pivot = new Vector2(0.5f, 0.5f);
-                rect.anchoredPosition = anchoredPosition;
-                rect.sizeDelta = size;
-                break;
-            case Anchor.TopCenter:
-                rect.anchorMin = new Vector2(0.5f, 1f);
-                rect.anchorMax = new Vector2(0.5f, 1f);
-                rect.pivot = new Vector2(0.5f, 0.5f);
-                rect.anchoredPosition = anchoredPosition;
-                rect.sizeDelta = size;
-                break;
-            case Anchor.MiddleCenter:
-                rect.anchorMin = new Vector2(0.5f, 0.5f);
-                rect.anchorMax = new Vector2(0.5f, 0.5f);
-                rect.pivot = new Vector2(0.5f, 0.5f);
-                rect.anchoredPosition = anchoredPosition;
-                rect.sizeDelta = size;
-                break;
-            case Anchor.BottomCenter:
-                rect.anchorMin = new Vector2(0.5f, 0f);
-                rect.anchorMax = new Vector2(0.5f, 0f);
-                rect.pivot = new Vector2(0.5f, 0.5f);
-                rect.anchoredPosition = anchoredPosition;
-                rect.sizeDelta = size;
-                break;
-            case Anchor.Custom:
-                rect.sizeDelta = size;
-                break;
-        }
-    }
-
-    private enum Anchor
-    {
-        Stretch,
-        TopLeft,
-        TopCenter,
-        MiddleCenter,
-        BottomCenter,
-        Custom
+        rect.anchorMin = min;
+        rect.anchorMax = max;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
     }
 }

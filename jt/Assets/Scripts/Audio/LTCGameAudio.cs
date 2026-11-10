@@ -8,8 +8,8 @@ namespace LTC.Audio
     public sealed class LTCGameAudio : MonoBehaviour
     {
         public static LTCGameAudio Instance { get; private set; }
-        public float musicVolume = .18f;
-        public float effectsVolume = .45f;
+        public float musicVolume = LTCGameSettings.DefaultMusicVolume;
+        public float effectsVolume = LTCGameSettings.DefaultEffectsVolume;
         AudioSource music;
         AudioSource effects;
         AudioClip tap;
@@ -38,8 +38,8 @@ namespace LTC.Audio
             if (Instance && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
             DontDestroyOnLoad(gameObject);
-            musicVolume = Mathf.Clamp01(PlayerPrefs.GetFloat("LTC.MusicVolume", .18f));
-            effectsVolume = Mathf.Clamp01(PlayerPrefs.GetFloat("LTC.EffectsVolume", .45f));
+            musicVolume = Mathf.Clamp01(PlayerPrefs.GetFloat("LTC.MusicVolume", LTCGameSettings.DefaultMusicVolume));
+            effectsVolume = Mathf.Clamp01(PlayerPrefs.GetFloat("LTC.EffectsVolume", LTCGameSettings.DefaultEffectsVolume));
             music = gameObject.AddComponent<AudioSource>();
             music.playOnAwake = false;
             music.loop = true;

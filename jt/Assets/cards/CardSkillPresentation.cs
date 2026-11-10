@@ -45,7 +45,7 @@ public sealed class CardSkillPresentation : MonoBehaviour
         rect.anchorMin = rect.anchorMax = new Vector2(1, 0);
         rect.pivot = new Vector2(1, 0);
         rect.sizeDelta = new Vector2(232, 272);
-        rect.anchoredPosition = new Vector2(-28, 30);
+        rect.anchoredPosition = new Vector2(-28, 300);
         var border = Panel("金色外框", hud.transform, new Color(.84f, .64f, .25f), new Vector2(224, 142), new Vector2(0, 48));
         buttonFace = Panel("技能按鈕", border.transform, new Color(.08f, .20f, .29f), new Vector2(216, 134), Vector2.zero);
         buttonFace.raycastTarget = true;

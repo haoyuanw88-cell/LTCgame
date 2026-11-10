@@ -97,7 +97,12 @@ namespace LTC.Mobile
 
             if (FindFirstObjectByType<EventSystem>() == null)
             {
-                GameObject eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+                GameObject eventSystem = new GameObject("EventSystem", typeof(EventSystem));
+#if ENABLE_INPUT_SYSTEM
+                eventSystem.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+#else
+                eventSystem.AddComponent<StandaloneInputModule>();
+#endif
                 DontDestroyOnLoad(eventSystem);
             }
         }

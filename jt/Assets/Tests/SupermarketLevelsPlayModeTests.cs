@@ -108,14 +108,35 @@ namespace LTC.Tests
             var copy = (IList)Activator.CreateInstance(original.GetType());
             var template = ((IList)original)[0];
             var created = new System.Collections.Generic.List<ScriptableObject>();
+            const string unlockKey = "LTC_UnlockAllLevels";
+            bool hadUnlock = PlayerPrefs.HasKey(unlockKey);
+            int savedUnlock = PlayerPrefs.GetInt(unlockKey);
             try
             {
-                for (int i = 0; i < 10; i++) { var clone = UnityEngine.Object.Instantiate((ScriptableObject)template); created.Add(clone); copy.Add(clone); }
+                PlayerPrefs.SetInt(unlockKey, 0);
+                for (int i = 0; i < 10; i++)
+                {
+                    var clone = UnityEngine.Object.Instantiate((ScriptableObject)template);
+                    clone.name = "TestLevel_" + Guid.NewGuid().ToString("N");
+                    created.Add(clone);
+                    copy.Add(clone);
+                }
                 catalog.GetType().GetField("levels").SetValue(catalog, copy);
                 Call(selection, "Open"); Call(selection, "ChangePage", 1);
                 Assert.IsFalse(((UnityEngine.UI.Button)F(selection, "nextButton")).interactable);
                 var buttons = (UnityEngine.UI.Button[])F(selection, "levelButtons");
                 Assert.IsTrue(buttons[1].gameObject.activeSelf); Assert.IsFalse(buttons[2].gameObject.activeSelf);
+                Assert.IsFalse(buttons[0].interactable);
+                var lockImage = buttons[0].transform.Find("金色鎖頭").GetComponent<UnityEngine.UI.Image>();
+                Assert.IsNotNull(lockImage.sprite);
+                Assert.IsTrue(lockImage.gameObject.activeSelf);
+                Call(selection, "SelectLevel", 8); Call(selection, "PlaySelected");
+                Assert.IsTrue((bool)P(selection, "IsOpen"));
+
+                PlayerPrefs.SetInt(unlockKey, 1);
+                Call(selection, "ChangePage", 0);
+                Assert.IsTrue(buttons[0].interactable);
+                Assert.IsFalse(lockImage.gameObject.activeSelf);
                 Call(selection, "SelectLevel", 8); Call(selection, "PlaySelected");
                 Assert.AreSame(copy[8], P(game, "CurrentLevel"));
                 Call(game, "StartGame");
@@ -123,16 +144,27 @@ namespace LTC.Tests
                 foreach (var product in (IList)F(game, "requiredProducts"))
                     for (int i = 0; i < (int)F(product, "quantity"); i++)
                         Call(game, "Buy", all.First(x => x.sprite == (Sprite)F(product, "productImage") && (bool)Call(game, "IsPurchasable", x)));
+                PlayerPrefs.SetInt(unlockKey, 0);
                 Call(selection, "PlayNextLevel");
                 Assert.AreSame(copy[9], P(game, "CurrentLevel"));
                 Assert.IsFalse((bool)P(game, "IsTutorialOpen"));
                 Assert.IsTrue((bool)P(game, "IsGameStarted"), "Next level should start without another tutorial.");
+                Call(selection, "Open");
+                Assert.IsTrue(buttons[0].transform.Find("通關星星").gameObject.activeSelf);
+                Assert.IsTrue(buttons[1].interactable);
             }
             finally
             {
                 catalog.GetType().GetField("levels").SetValue(catalog, original);
                 Call(game, "CancelCurrentAssessment");
-                foreach (var item in created) UnityEngine.Object.Destroy(item);
+                foreach (var item in created)
+                {
+                    PlayerPrefs.DeleteKey("LTC.LevelCleared.SupermarketLevelCatalog." + item.name);
+                    UnityEngine.Object.Destroy(item);
+                }
+                if (hadUnlock) PlayerPrefs.SetInt(unlockKey, savedUnlock);
+                else PlayerPrefs.DeleteKey(unlockKey);
+                PlayerPrefs.Save();
             }
         }
     }

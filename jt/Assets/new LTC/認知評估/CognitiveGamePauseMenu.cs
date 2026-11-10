@@ -40,6 +40,7 @@ public sealed class CognitiveGamePauseMenu : MonoBehaviour
         if (pauseButton != null) pauseButton.onClick.AddListener(OpenPauseMenu);
         if (resumeButton != null) resumeButton.onClick.AddListener(ResumeGame);
         if (homeButton != null) homeButton.onClick.AddListener(ReturnHomeWithoutSaving);
+        AddSettingsButton();
         if (messageText != null)
         {
             messageText.text = resumeKeepsProgress ? "返回遊戲時，會保留目前進度，\n從暫停的位置繼續遊戲。\n回到主頁則不儲存本次紀錄。" :
@@ -47,6 +48,38 @@ public sealed class CognitiveGamePauseMenu : MonoBehaviour
                 "恢復到上一題完成時的剩餘時間，\n" +
                 "並重新產生相同難度的新題目。";
         }
+    }
+
+    private void AddSettingsButton()
+    {
+        if (pausePanel == null || resumeButton == null || homeButton == null) return;
+
+        Transform controls = homeButton.transform.parent;
+        if (controls.parent != pausePanel.transform || resumeButton.transform.parent != controls) return;
+
+        Button settings = Instantiate(homeButton, controls, false);
+        settings.name = "設定按鈕";
+        settings.onClick = new Button.ButtonClickedEvent();
+        var label = settings.GetComponentInChildren<TMP_Text>(true);
+        if (label != null) label.text = "設定";
+
+        PlacePauseButton(resumeButton, .08f, .36f);
+        PlacePauseButton(settings, .37f, .63f);
+        PlacePauseButton(homeButton, .64f, .92f);
+        LTCGameSettingsPanel.AttachToPause(pausePanel, controls.gameObject, settings);
+    }
+
+    private static void PlacePauseButton(Button button, float left, float right)
+    {
+        var rect = (RectTransform)button.transform;
+        rect.anchorMin = new Vector2(left, .16f);
+        rect.anchorMax = new Vector2(right, .36f);
+        rect.offsetMin = rect.offsetMax = Vector2.zero;
+        var label = button.GetComponentInChildren<TMP_Text>(true);
+        if (label == null) return;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 16f;
+        label.fontSizeMax = 28f;
     }
 
     private void ResolveTarget()
