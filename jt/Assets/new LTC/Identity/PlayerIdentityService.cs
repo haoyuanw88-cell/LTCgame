@@ -384,9 +384,12 @@ namespace LTC.Identity
 
         void ApplySession(PlayerSessionResponse response, string provider, bool persist)
         {
-            if (IsReady && AuthProvider == "google" && provider == "google" &&
-                !string.IsNullOrEmpty(PlayerId) && PlayerId != response.playerId)
-                SwitchLocalProfile(PlayerId, response.playerId);
+            string previousGooglePlayerId = string.Equals(AuthProvider, "google", StringComparison.OrdinalIgnoreCase)
+                ? (IsValidPlayerId(PlayerId) ? PlayerId : ExpectedGooglePlayer)
+                : string.Empty;
+            if (provider == "google" && IsValidPlayerId(previousGooglePlayerId) &&
+                previousGooglePlayerId != response.playerId)
+                SwitchLocalProfile(previousGooglePlayerId, response.playerId);
             if (provider == "google") RememberGoogleIdentity(response.playerId);
             PlayerId = response.playerId;
             PlayerCode = response.playerCode;
@@ -407,8 +410,8 @@ namespace LTC.Identity
         static void SwitchLocalProfile(string previousPlayerId, string nextPlayerId)
         {
             const string prefix = "LTC_LocalProfile_";
-            string[] fields = { "LTC_ProfileBirthDate", "LTC_ProfileGender",
-                "LTC_ProfileEducation", "LTC_OnboardingCompleted_v1" };
+            string[] fields = { "SavedPlayerName", "AccountName", "LTC_ProfileBirthDate",
+                "LTC_ProfileGender", "LTC_ProfileEducation", "LTC_OnboardingCompleted_v1" };
             foreach (string field in fields)
             {
                 string savedValue = field == "LTC_OnboardingCompleted_v1"

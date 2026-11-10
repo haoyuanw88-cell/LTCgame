@@ -185,28 +185,25 @@ public sealed class PetGardenPanels : MonoBehaviour
         var frame = new GameObject("視窗深色外框", typeof(RectTransform), typeof(Image));
         frame.transform.SetParent(overlay.transform, false);
         var frameImage = frame.GetComponent<Image>();
-        var texture = Resources.Load<Texture2D>("PetUI/panel");
-        frameImage.sprite = Sprite.Create(texture, new Rect(0, texture.height * .19f, texture.width, texture.height * .62f),
-            new Vector2(.5f, .5f), 100, 0, SpriteMeshType.FullRect, new Vector4(180, 110, 180, 110));
-        frameImage.type = Image.Type.Sliced;
-        Place((RectTransform)frame.transform, .12f, .07f, .88f, .93f);
+        LTCWarmUi.Surface(frameImage, Paper, true);
+        Place((RectTransform)frame.transform, .14f, .08f, .86f, .92f);
         var card = CreateImage(frame.transform, "奶油色內容", null, Color.clear);
-        Place(card.rectTransform, .07f, .08f, .93f, .92f);
-        var title = CreateText(card.transform, "標題", "", 52, TextAlignmentOptions.Left);
-        Place(title.rectTransform, .05f, .78f, .70f, .89f);
+        Place(card.rectTransform, .025f, .025f, .975f, .975f);
+        var title = CreateText(card.transform, "標題", "", 42, TextAlignmentOptions.Left);
+        Place(title.rectTransform, .04f, .84f, .72f, .97f);
         title.name = "視窗標題";
         var close = CreateButton(card.transform, "關閉視窗", null);
         close.GetComponent<Image>().color = Peach;
-        Place((RectTransform)close.transform, .80f, .79f, .96f, .90f);
+        Place((RectTransform)close.transform, .80f, .855f, .96f, .955f);
         var closeText = CreateText(close.transform, "文字", "關閉", 32, TextAlignmentOptions.Center);
         Place(closeText.rectTransform, 0, 0, 1, 1);
         close.onClick.AddListener(() => overlay.SetActive(false));
 
         var contentBg = CreateImage(card.transform, "狀態與背包內容", null, Color.clear);
-        Place(contentBg.rectTransform, .03f, .23f, .97f, .76f);
+        Place(contentBg.rectTransform, .03f, .13f, .97f, .82f);
         rows = contentBg.transform;
-        footer = CreateText(card.transform, "提示", "花園裡的兔子與貓咪會自在地散步。", 32, TextAlignmentOptions.Center);
-        Place(footer.rectTransform, .07f, .13f, .93f, .22f);
+        footer = CreateText(card.transform, "提示", "花園裡的兔子與貓咪會自在地散步。", 24, TextAlignmentOptions.Center);
+        Place(footer.rectTransform, .05f, .025f, .95f, .11f);
         overlay.SetActive(false);
     }
 
@@ -231,8 +228,12 @@ public sealed class PetGardenPanels : MonoBehaviour
         }
         if (owned.Count == 0)
         {
-            var empty = CreateText(rows, "空背包", "背包還是空的\n到商店選一件喜歡的物品吧！", 42, TextAlignmentOptions.Center);
-            Place(empty.rectTransform, .08f, .22f, .92f, .80f);
+            var picture = CreateImage(rows, "背包插圖", Resources.Load<Sprite>("PetUI/backpack"), Color.white);
+            Place(picture.rectTransform, .38f, .52f, .62f, .90f);
+            picture.preserveAspect = true;
+            picture.raycastTarget = false;
+            var empty = CreateText(rows, "空背包", "還沒有收藏物品\n到商店挑一份寵物喜歡的點心吧", 32, TextAlignmentOptions.Center);
+            Place(empty.rectTransform, .08f, .17f, .92f, .49f);
             return;
         }
         for (int i = 0; i < owned.Count; i++) AddRow(i, owned[i].Item1, owned[i].Item2, owned[i].Item3, i % 2 == 0 ? Sage : Peach);
@@ -303,8 +304,8 @@ public sealed class PetGardenPanels : MonoBehaviour
         string id = PetId(pet);
         var frame = CreateImage(parent, "寵物_" + id, null, Wood);
         var element = frame.gameObject.AddComponent<LayoutElement>();
-        element.preferredHeight = 200f;
-        element.minHeight = 200f;
+        element.preferredHeight = 155f;
+        element.minHeight = 155f;
         var background = CreateImage(frame.transform, "卡片底色", null, index % 2 == 0 ? Peach : Sage);
         Place(background.rectTransform, .004f, .025f, .996f, .975f);
 
@@ -541,6 +542,8 @@ public sealed class PetGardenPanels : MonoBehaviour
         var image = go.GetComponent<Image>();
         image.sprite = sprite;
         image.color = color;
+        if (sprite == null && color.a > .9f)
+            LTCWarmUi.Surface(image, color);
         return image;
     }
 

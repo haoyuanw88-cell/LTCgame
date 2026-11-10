@@ -81,7 +81,9 @@ public sealed class googlelogin : MonoBehaviour
 
         try
         {
-            switchingGoogleAccount = identityService != null && identityService.IsReady &&
+            // Once this installation has used Google, pressing the Google button is
+            // an explicit account selection even when the previous session expired.
+            switchingGoogleAccount = identityService != null &&
                                      string.Equals(identityService.AuthProvider, "google", StringComparison.OrdinalIgnoreCase);
             StopListener();
             pendingState = CreateRandomUrlSafeValue(32);
