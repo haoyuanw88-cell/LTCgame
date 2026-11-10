@@ -24,7 +24,13 @@ namespace LTC.Audio
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Bootstrap()
         {
+            EnsureInstance();
+        }
+
+        public static LTCGameAudio EnsureInstance()
+        {
             if (!Instance) new GameObject("LTC Game Audio").AddComponent<LTCGameAudio>();
+            return Instance;
         }
 
         void Awake()
@@ -32,8 +38,8 @@ namespace LTC.Audio
             if (Instance && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
             DontDestroyOnLoad(gameObject);
-            musicVolume = PlayerPrefs.GetFloat("LTC.MusicVolume", .18f);
-            effectsVolume = PlayerPrefs.GetFloat("LTC.EffectsVolume", .45f);
+            musicVolume = Mathf.Clamp01(PlayerPrefs.GetFloat("LTC.MusicVolume", .18f));
+            effectsVolume = Mathf.Clamp01(PlayerPrefs.GetFloat("LTC.EffectsVolume", .45f));
             music = gameObject.AddComponent<AudioSource>();
             music.playOnAwake = false;
             music.loop = true;
@@ -70,13 +76,24 @@ namespace LTC.Audio
             if (!supported && music.volume <= 0 && music.isPlaying) music.Stop();
             if (Time.unscaledTime < nextScan) return;
             nextScan = Time.unscaledTime + .5f;
-            otherMusicPlaying = false;
-            foreach (AudioSource source in Object.FindObjectsByType<AudioSource>())
-                if (source != music && source != effects && source.loop && source.isPlaying && source.clip && !source.mute && source.volume > .001f)
-                    otherMusicPlaying = true;
+            ApplySceneVolumes();
             if (!supported) return;
             foreach (Button button in Object.FindObjectsByType<Button>(FindObjectsInactive.Include))
                 if (!button.GetComponent<LTCButtonSound>()) button.gameObject.AddComponent<LTCButtonSound>();
+        }
+
+        // Existing game managers play BGM on looping sources and effects on one-shot sources.
+        // Apply the saved channels to scene-owned sources as well as the shared audio service.
+        public void ApplySceneVolumes()
+        {
+            otherMusicPlaying = false;
+            foreach (AudioSource source in Object.FindObjectsByType<AudioSource>(FindObjectsInactive.Include))
+            {
+                if (source == music || source == effects) continue;
+                source.volume = source.loop ? musicVolume : effectsVolume;
+                if (source.loop && source.isActiveAndEnabled && source.isPlaying && source.clip && !source.mute)
+                    otherMusicPlaying = true;
+            }
         }
 
         public void PlayTap()
@@ -91,12 +108,15 @@ namespace LTC.Audio
             musicVolume = Mathf.Clamp01(value);
             PlayerPrefs.SetFloat("LTC.MusicVolume", musicVolume);
             PlayerPrefs.Save();
+            ApplySceneVolumes();
+            music.volume = supported && !otherMusicPlaying ? musicVolume : 0;
         }
         public void SetEffectsVolume(float value)
         {
             effectsVolume = Mathf.Clamp01(value);
             PlayerPrefs.SetFloat("LTC.EffectsVolume", effectsVolume);
             PlayerPrefs.Save();
+            ApplySceneVolumes();
         }
         void OnDestroy()
         {

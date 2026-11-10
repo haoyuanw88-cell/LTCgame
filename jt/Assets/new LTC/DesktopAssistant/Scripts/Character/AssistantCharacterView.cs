@@ -50,6 +50,9 @@ namespace LTC.DesktopAssistant
             characterRect.localRotation = Quaternion.identity;
             characterRect.localScale = Vector3.one;
 
+            // 說話時依照需求保持單張圖片；其餘狀態可播放寵物既有影格動畫。
+            if (currentState != AssistantState.Talking) AnimateFrames();
+
             switch (currentState)
             {
                 case AssistantState.Thinking:
@@ -62,7 +65,8 @@ namespace LTC.DesktopAssistant
                     characterRect.anchoredPosition += Vector2.right * Mathf.Sin(stateTime * 18f) * 7f;
                     break;
                 default:
-                    if (characterImage != null && idleSprite != null) characterImage.sprite = idleSprite;
+                    if (animationFrames.Length == 0 && characterImage != null && idleSprite != null)
+                        characterImage.sprite = idleSprite;
                     break;
             }
         }
