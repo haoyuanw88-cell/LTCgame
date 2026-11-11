@@ -42,16 +42,17 @@ namespace LTC.DesktopAssistant
             if (characterRect == null) return;
             stateTime += Time.unscaledDeltaTime;
 
-            // 說話時依照使用者需求保持角色完全靜止；其他狀態才套用浮動效果。
-            float bob = currentState == AssistantState.Talking
-                ? 0f
-                : Mathf.Sin(stateTime * 2.2f) * 4f;
+            // 待機與說話時保持完全靜止，避免被誤認為仍在活動。
+            float bob = currentState == AssistantState.Thinking
+                ? Mathf.Sin(stateTime * 2.2f) * 4f
+                : 0f;
             characterRect.anchoredPosition = basePosition + Vector2.up * bob;
             characterRect.localRotation = Quaternion.identity;
             characterRect.localScale = Vector3.one;
 
-            // 說話時依照需求保持單張圖片；其餘狀態可播放寵物既有影格動畫。
-            if (currentState != AssistantState.Talking) AnimateFrames();
+            // 寵物收藏的影格是移動方向圖，不適合當桌面助理的待機動畫。
+            // 各狀態固定使用完整預覽圖，避免切換影格時出現裁切或零碎圖案。
+            if (characterImage != null && idleSprite != null) characterImage.sprite = idleSprite;
 
             switch (currentState)
             {
@@ -59,14 +60,11 @@ namespace LTC.DesktopAssistant
                     characterRect.localRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(stateTime * 2f) * 3f);
                     break;
                 case AssistantState.Talking:
-                    if (characterImage != null && idleSprite != null) characterImage.sprite = idleSprite;
                     break;
                 case AssistantState.Reminder:
                     characterRect.anchoredPosition += Vector2.right * Mathf.Sin(stateTime * 18f) * 7f;
                     break;
                 default:
-                    if (animationFrames.Length == 0 && characterImage != null && idleSprite != null)
-                        characterImage.sprite = idleSprite;
                     break;
             }
         }
@@ -104,13 +102,23 @@ namespace LTC.DesktopAssistant
             stateTime = 0f;
             frameIndex = 0;
             if (characterImage != null && idleSprite != null) characterImage.sprite = idleSprite;
-            if (stateEffectText == null) return;
+            // 不在遊戲畫面上顯示省略號、驚嘆號或音符，避免形成多餘圖案。
+            if (stateEffectText != null)
+            {
+                stateEffectText.text = string.Empty;
+                stateEffectText.gameObject.SetActive(false);
+            }
+        }
 
-            stateEffectText.text = state == AssistantState.Thinking ? "…"
-                : state == AssistantState.Reminder ? "!"
-                : state == AssistantState.Talking ? "♪"
-                : string.Empty;
-            stateEffectText.gameObject.SetActive(state != AssistantState.Idle);
+        /// <summary>立即收起對話氣泡，供待機按鍵與自動返回待機使用。</summary>
+        public void HideBubble()
+        {
+            if (bubbleRoutine != null)
+            {
+                StopCoroutine(bubbleRoutine);
+                bubbleRoutine = null;
+            }
+            if (bubbleRoot != null) bubbleRoot.SetActive(false);
         }
 
         public void ShowBubble(string message, float duration)

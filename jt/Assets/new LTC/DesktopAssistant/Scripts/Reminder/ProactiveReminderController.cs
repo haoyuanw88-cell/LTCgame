@@ -19,6 +19,7 @@ namespace LTC.DesktopAssistant.Reminders
         [SerializeField] VisionAnalysisController visionController;
         [SerializeField] WindowsUserIdleMonitor idleMonitor;
         [SerializeField] GameObject reminderPanel;
+        [SerializeField] TMP_Text reminderTitleText;
         [SerializeField] TMP_Text reminderText;
         [SerializeField] TMP_Text policyStatusText;
         [SerializeField] TMP_Text historyText;
@@ -32,13 +33,15 @@ namespace LTC.DesktopAssistant.Reminders
         [SerializeField] bool showLargePopup = true;
 
         public void Configure(ProactiveReminderSettings value, VisionAnalysisController vision,
-            WindowsUserIdleMonitor idle, GameObject panel, TMP_Text reminder, TMP_Text policyStatus,
+            WindowsUserIdleMonitor idle, GameObject panel, TMP_Text reminderTitle, TMP_Text reminder,
+            TMP_Text policyStatus,
             TMP_Text historyLabel, Button dismiss, Button simulateTrusted, Button simulateIdle)
         {
             settings = value;
             visionController = vision;
             idleMonitor = idle;
             reminderPanel = panel;
+            reminderTitleText = reminderTitle;
             reminderText = reminder;
             policyStatusText = policyStatus;
             historyText = historyLabel;
@@ -58,7 +61,9 @@ namespace LTC.DesktopAssistant.Reminders
         {
             visionController.AnalysisCompleted += HandleAnalysisCompleted;
             idleMonitor.IdleStateChanged += HandleIdleStateChanged;
+            AssistantPreferences.SelectedPetChanged += HandleSelectedPetChanged;
             idleMonitor.Configure(settings.idleThresholdSeconds, settings.idleCheckIntervalSeconds);
+            RefreshPetName();
             reminderPanel.SetActive(false);
             policyStatusText.text = BuildPolicyStatus("等待事件");
             RefreshHistory();
@@ -68,6 +73,7 @@ namespace LTC.DesktopAssistant.Reminders
         {
             if (visionController != null) visionController.AnalysisCompleted -= HandleAnalysisCompleted;
             if (idleMonitor != null) idleMonitor.IdleStateChanged -= HandleIdleStateChanged;
+            AssistantPreferences.SelectedPetChanged -= HandleSelectedPetChanged;
             if (dismissButton != null) dismissButton.onClick.RemoveListener(Dismiss);
             if (simulateTrustedEventButton != null)
                 simulateTrustedEventButton.onClick.RemoveListener(SimulateTrustedEvent);
@@ -119,6 +125,13 @@ namespace LTC.DesktopAssistant.Reminders
 
         void HandleAnalysisCompleted(VisionAnalysisResult result) => EvaluateAnalysis(result);
         void HandleIdleStateChanged(bool isIdle, float idleSeconds) => EvaluateIdle(isIdle, idleSeconds);
+        void HandleSelectedPetChanged(string petId) => RefreshPetName();
+
+        void RefreshPetName()
+        {
+            if (reminderTitleText != null)
+                reminderTitleText.text = AssistantPreferences.GetSelectedPetDisplayName() + "主動提醒";
+        }
 
         void TryShow(string key, string message)
         {
@@ -131,7 +144,7 @@ namespace LTC.DesktopAssistant.Reminders
             }
 
             cooldowns.MarkShown(key, now);
-            reminderText.text = message + "\n\nAI 只提供建議，不會自動操作遊戲。";
+            reminderText.text = message;
             if (showLargePopup) reminderPanel.SetActive(true);
             AddHistory("已顯示｜" + message.Replace('\n', ' '));
             policyStatusText.text = BuildPolicyStatus("已顯示提醒");

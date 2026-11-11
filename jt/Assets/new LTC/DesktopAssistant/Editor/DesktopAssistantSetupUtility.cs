@@ -119,6 +119,7 @@ public static class DesktopAssistantSetupUtility
         SetRect(effect.rectTransform, new Vector2(.5f, 0f), new Vector2(.5f, 0f), new Vector2(.5f, 0f),
             new Vector2(90f, 90f), new Vector2(140f, 180f));
         effect.raycastTarget = false;
+        effect.gameObject.SetActive(false);
 
         AssistantCharacterView character = anchor.AddComponent<AssistantCharacterView>();
         character.Configure(characterImage, bubble, bubbleText, effect);

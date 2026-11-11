@@ -59,6 +59,11 @@ namespace LTC.DesktopAssistant.Tests
                 .FirstOrDefault(item => item.name == "CharacterImage");
             Assert.IsNotNull(character, "找不到可點擊的動物圖片。");
             Assert.IsNotNull(character.GetComponent<Button>(), "動物圖片必須可以點擊開啟功能選單。");
+
+            Transform stateEffect = prefab.GetComponentsInChildren<Transform>(true)
+                .FirstOrDefault(item => item.name == "StateEffect");
+            Assert.IsTrue(stateEffect == null || !stateEffect.gameObject.activeSelf,
+                "正式遊戲畫面不應顯示狀態符號圖案。");
         }
 
         [Test]
@@ -246,6 +251,21 @@ namespace LTC.DesktopAssistant.Tests
                     .FirstOrDefault(type => type != null);
                 Assert.IsNotNull(found, "找不到最終桌面模組：" + requiredType);
             }
+        }
+
+        [Test]
+        public void AssistantPetNamesComeFromCurrentPetCatalog()
+        {
+            System.Type preferencesType = System.AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.GetType("LTC.DesktopAssistant.AssistantPreferences"))
+                .FirstOrDefault(type => type != null);
+            Assert.IsNotNull(preferencesType, "找不到助理寵物偏好設定。");
+            System.Reflection.MethodInfo getName = preferencesType.GetMethod("GetPetDisplayName");
+            Assert.IsNotNull(getName);
+            Assert.AreEqual("兔子", getName.Invoke(null, new object[] { "rabbit", "寵物" }));
+            Assert.AreEqual("小貓", getName.Invoke(null, new object[] { "cat", "寵物" }));
+            Assert.AreEqual("小龍", getName.Invoke(null, new object[] { "dragon", "寵物" }));
+            Assert.AreEqual("寵物", getName.Invoke(null, new object[] { "missing", "寵物" }));
         }
     }
 }

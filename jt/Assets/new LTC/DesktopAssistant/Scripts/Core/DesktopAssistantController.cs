@@ -18,11 +18,15 @@ namespace LTC.DesktopAssistant
         [SerializeField] AssistantStateMenu stateMenu;
 
         IReadOnlyList<LTCPetDefinition> availablePets;
+        LTCPetDefinition selectedPet;
         Coroutine returnToIdleRoutine;
 
         public AssistantState CurrentState => characterView == null
             ? AssistantState.Idle
             : characterView.CurrentState;
+        public string CurrentPetDisplayName => selectedPet == null || string.IsNullOrWhiteSpace(selectedPet.displayName)
+            ? "寵物"
+            : selectedPet.displayName;
 
         void Start()
         {
@@ -63,13 +67,14 @@ namespace LTC.DesktopAssistant
         public void SetIdleState()
         {
             SetState(AssistantState.Idle);
+            characterView.HideBubble();
             stateMenu.Close();
         }
 
         public void SetTalkingState()
         {
             SetState(AssistantState.Talking);
-            characterView.ShowBubble("你好，我是小樂！", settings.bubbleDuration);
+            characterView.ShowBubble("你好，我是" + CurrentPetDisplayName + "！", settings.bubbleDuration);
             stateMenu.Close();
             ScheduleReturnToIdle();
         }
@@ -91,6 +96,7 @@ namespace LTC.DesktopAssistant
         void SelectPet(LTCPetDefinition pet)
         {
             if (pet == null) return;
+            selectedPet = pet;
             characterView.SetPet(pet, petCatalog.GetIdleSprite(pet), petCatalog.GetAnimationFrames(pet));
             AssistantPreferences.SelectedPetId = pet.id;
         }
@@ -116,6 +122,8 @@ namespace LTC.DesktopAssistant
             yield return new WaitForSecondsRealtime(settings.talkingDuration);
             returnToIdleRoutine = null;
             characterView.SetState(AssistantState.Idle);
+            characterView.HideBubble();
+            stateMenu.Close();
         }
     }
 }

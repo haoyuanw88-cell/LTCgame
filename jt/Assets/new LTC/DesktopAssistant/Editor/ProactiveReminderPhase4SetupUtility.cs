@@ -49,14 +49,26 @@ public static class ProactiveReminderPhase4SetupUtility
         if (canvas == null || vision == null)
             throw new MissingReferenceException("第三階段場景缺少 Canvas 或視覺分析控制器。");
 
-        ScaleAndMove(canvas.transform.Find("CapturePanel"), .58f, new Vector2(-645f, 0f));
-        ScaleAndMove(canvas.transform.Find("VisionAnalysisPanel"), .64f, new Vector2(-80f, 0f));
+        Transform capturePanel = canvas.transform.Find("CapturePanel");
+        Transform analysisPanel = canvas.transform.Find("VisionAnalysisPanel");
+        if (capturePanel != null)
+        {
+            GameObject prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(capturePanel.gameObject);
+            if (prefabRoot != null)
+                PrefabUtility.UnpackPrefabInstance(prefabRoot,
+                    PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+        }
+        RectTransform scrollContent = CreateHorizontalTestScroll(canvas.transform);
+        if (capturePanel != null) capturePanel.SetParent(scrollContent, false);
+        if (analysisPanel != null) analysisPanel.SetParent(scrollContent, false);
+        ScaleAndMove(capturePanel, .58f, new Vector2(-650f, 0f));
+        ScaleAndMove(analysisPanel, .64f, new Vector2(-65f, 0f));
 
-        GameObject policyPanel = CreatePanel(canvas.transform, "ReminderPolicyPanel", Cream);
+        GameObject policyPanel = CreatePanel(scrollContent, "ReminderPolicyPanel", Cream);
         SetRect(policyPanel.GetComponent<RectTransform>(), new Vector2(.5f, .5f), new Vector2(.5f, .5f),
             new Vector2(.5f, .5f), new Vector2(550f, 860f), new Vector2(660f, 0f));
 
-        TMP_Text title = CreateText(policyPanel.transform, "Title", "第四階段・主動提醒", font,
+        TMP_Text title = CreateText(policyPanel.transform, "Title", "智慧主動提醒", font,
             30f, FontStyles.Bold, Ink, TextAlignmentOptions.Center);
         SetRect(title.rectTransform, new Vector2(.5f, 1f), new Vector2(.5f, 1f),
             new Vector2(.5f, 1f), new Vector2(500f, 52f), new Vector2(0f, -24f));
@@ -98,7 +110,7 @@ public static class ProactiveReminderPhase4SetupUtility
             new Color32(40, 45, 38, 238));
         SetRect(reminderPanel.GetComponent<RectTransform>(), new Vector2(.5f, .5f), new Vector2(.5f, .5f),
             new Vector2(.5f, .5f), new Vector2(700f, 330f), Vector2.zero);
-        TMP_Text reminderTitle = CreateText(reminderPanel.transform, "ReminderTitle", "小樂主動提醒", font,
+        TMP_Text reminderTitle = CreateText(reminderPanel.transform, "ReminderTitle", "寵物主動提醒", font,
             28f, FontStyles.Bold, new Color32(255, 224, 142, 255), TextAlignmentOptions.Center);
         SetRect(reminderTitle.rectTransform, new Vector2(.5f, 1f), new Vector2(.5f, 1f),
             new Vector2(.5f, 1f), new Vector2(650f, 50f), new Vector2(0f, -20f));
@@ -115,7 +127,7 @@ public static class ProactiveReminderPhase4SetupUtility
         if (idleMonitor == null) idleMonitor = host.AddComponent<WindowsUserIdleMonitor>();
         ProactiveReminderController reminderController = host.GetComponent<ProactiveReminderController>();
         if (reminderController == null) reminderController = host.AddComponent<ProactiveReminderController>();
-        reminderController.Configure(settings, vision, idleMonitor, reminderPanel, reminderText,
+        reminderController.Configure(settings, vision, idleMonitor, reminderPanel, reminderTitle, reminderText,
             policyStatus, history, dismissButton, trustedButton, idleButton);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
@@ -131,6 +143,70 @@ public static class ProactiveReminderPhase4SetupUtility
         RectTransform rect = target.GetComponent<RectTransform>();
         rect.localScale = Vector3.one * scale;
         rect.anchoredPosition = position;
+    }
+
+    /// <summary>
+    /// 建立橫向測試工作區。ScrollRect 在只啟用 horizontal 時，會把一般滑鼠滾輪的 Y 軸
+    /// 自動轉成水平位移；底部 Scrollbar 也能直接拖曳，方便小解析度操作所有按鈕。
+    /// </summary>
+    static RectTransform CreateHorizontalTestScroll(Transform canvas)
+    {
+        GameObject root = CreatePanel(canvas, "HorizontalTestScroll", new Color32(0, 0, 0, 0));
+        RectTransform rootRect = root.GetComponent<RectTransform>();
+        Stretch(rootRect, 12f, 12f);
+        Image rootImage = root.GetComponent<Image>();
+        rootImage.raycastTarget = true;
+
+        ScrollRect scroll = root.AddComponent<ScrollRect>();
+        scroll.horizontal = true;
+        scroll.vertical = false;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.inertia = true;
+        scroll.decelerationRate = .12f;
+        scroll.scrollSensitivity = 85f;
+
+        GameObject viewport = CreatePanel(root.transform, "Viewport", new Color32(0, 0, 0, 0));
+        RectTransform viewportRect = viewport.GetComponent<RectTransform>();
+        viewportRect.anchorMin = Vector2.zero;
+        viewportRect.anchorMax = Vector2.one;
+        viewportRect.offsetMin = new Vector2(0f, 46f);
+        viewportRect.offsetMax = Vector2.zero;
+        viewport.AddComponent<RectMask2D>();
+        viewport.GetComponent<Image>().raycastTarget = true;
+
+        GameObject contentObject = new GameObject("Content", typeof(RectTransform));
+        contentObject.transform.SetParent(viewport.transform, false);
+        RectTransform content = contentObject.GetComponent<RectTransform>();
+        SetRect(content, new Vector2(.5f, .5f), new Vector2(.5f, .5f),
+            new Vector2(.5f, .5f), new Vector2(2100f, 960f), Vector2.zero);
+
+        GameObject scrollbarObject = CreatePanel(root.transform, "HorizontalScrollbar",
+            new Color32(90, 105, 82, 115));
+        RectTransform scrollbarRect = scrollbarObject.GetComponent<RectTransform>();
+        scrollbarRect.anchorMin = new Vector2(0f, 0f);
+        scrollbarRect.anchorMax = new Vector2(1f, 0f);
+        scrollbarRect.pivot = new Vector2(.5f, 0f);
+        scrollbarRect.sizeDelta = new Vector2(-190f, 24f);
+        scrollbarRect.anchoredPosition = new Vector2(0f, 6f);
+        Scrollbar scrollbar = scrollbarObject.AddComponent<Scrollbar>();
+        scrollbar.direction = Scrollbar.Direction.LeftToRight;
+
+        GameObject slidingArea = new GameObject("Sliding Area", typeof(RectTransform));
+        slidingArea.transform.SetParent(scrollbarObject.transform, false);
+        Stretch(slidingArea.GetComponent<RectTransform>(), 8f, 3f);
+        Image handle = CreatePanel(slidingArea.transform, "Handle", Green).GetComponent<Image>();
+        RectTransform handleRect = handle.rectTransform;
+        SetRect(handleRect, new Vector2(0f, 0f), new Vector2(.35f, 1f),
+            new Vector2(.5f, .5f), Vector2.zero, Vector2.zero);
+        scrollbar.handleRect = handleRect;
+        scrollbar.targetGraphic = handle;
+
+        scroll.viewport = viewportRect;
+        scroll.content = content;
+        scroll.horizontalScrollbar = scrollbar;
+        scroll.horizontalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+        scroll.horizontalScrollbarSpacing = 4f;
+        return content;
     }
 
     static Button CreateButton(Transform parent, string name, string label, TMP_FontAsset font, Color color)

@@ -81,7 +81,7 @@ public static class DesktopCapturePhase2SetupUtility
         SetRect(panel.GetComponent<RectTransform>(), new Vector2(.5f, .5f), new Vector2(.5f, .5f),
             new Vector2(.5f, .5f), new Vector2(1280f, 860f), Vector2.zero);
 
-        TMP_Text title = CreateText(panel.transform, "Title", "第二階段・Windows 畫面擷取預覽",
+        TMP_Text title = CreateText(panel.transform, "Title", "Windows 畫面擷取預覽",
             font, 38f, FontStyles.Bold, Ink, TextAlignmentOptions.Center);
         SetRect(title.rectTransform, new Vector2(.5f, 1f), new Vector2(.5f, 1f),
             new Vector2(.5f, 1f), new Vector2(1000f, 58f), new Vector2(0f, -22f));

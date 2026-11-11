@@ -61,7 +61,7 @@ public static class VisionAnalysisPhase3SetupUtility
         SetRect(analysisPanel.GetComponent<RectTransform>(), new Vector2(.5f, .5f), new Vector2(.5f, .5f),
             new Vector2(.5f, .5f), new Vector2(760f, 860f), new Vector2(540f, 0f));
 
-        TMP_Text title = CreateText(analysisPanel.transform, "AnalysisTitle", "第三階段・AI 結構化分析",
+        TMP_Text title = CreateText(analysisPanel.transform, "AnalysisTitle", "AI 畫面結構化分析",
             font, 31f, FontStyles.Bold, Ink, TextAlignmentOptions.Center);
         SetRect(title.rectTransform, new Vector2(.5f, 1f), new Vector2(.5f, 1f),
             new Vector2(.5f, 1f), new Vector2(700f, 50f), new Vector2(0f, -20f));
